@@ -3,157 +3,161 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Daily Walkins Tracker</title>
+    <title>Daily Walkins Tracker | Target Pulse</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
     <style>
-        :root { --primary: #2563eb; --success: #16a34a; --danger: #ef4444; --dark: #0f172a; --gold: #f59e0b; --bg: #f8fafc; }
-        * { box-sizing: border-box; font-family: -apple-system, sans-serif; }
-        body { background: var(--bg); margin: 0; padding: 0; color: var(--dark); overflow-x: hidden; }
-        
-        /* Auth Screen */
-        #authScreen { position: fixed; inset: 0; background: var(--dark); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
-        .auth-card { background: white; padding: 30px; border-radius: 20px; width: 100%; max-width: 350px; text-align: center; }
+        :root { 
+            --primary: #4f46e5; --success: #10b981; --danger: #ef4444; 
+            --dark: #1e293b; --white: #ffffff;
+            --gold: #fbbf24; --silver: #94a3b8; --bronze: #b45309;
+        }
+        * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: #f1f5f9; margin: 0; color: var(--dark); }
 
-        nav { background: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .nav-title { font-weight: 800; font-size: 0.9rem; color: var(--primary); text-transform: uppercase; }
-        .nav-btn { background: #f1f5f9; border: none; padding: 8px 15px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 11px; }
+        /* Auth Layer */
+        #authScreen { position: fixed; inset: 0; background: var(--dark); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .auth-card { background: var(--white); padding: 40px; border-radius: 24px; width: 100%; max-width: 380px; text-align: center; }
 
-        .container { max-width: 1000px; margin: auto; padding: 15px; }
+        nav { background: var(--white); padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 100; }
+        .nav-logo { font-weight: 900; font-size: 1.1rem; color: var(--primary); text-transform: uppercase; }
+        .nav-btn { background: var(--primary); color: white; border: none; padding: 10px 18px; border-radius: 10px; font-weight: 600; cursor: pointer; font-size: 12px; }
+
+        .container { max-width: 1100px; margin: auto; padding: 20px; }
         .hidden { display: none !important; }
+        .card { background: var(--white); padding: 20px; border-radius: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px; }
         
-        .card { background: white; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 15px; border: 1px solid #e2e8f0; }
-        h3 { margin-top: 0; font-size: 1.1rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 15px; }
+        /* Pulse Leaderboard */
+        .leader-item { display: flex; align-items: center; padding: 15px; border-radius: 15px; background: #f8fafc; margin-bottom: 10px; border: 1px solid #e2e8f0; }
+        .leader-rank { width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; margin-right: 15px; color: white; }
+        .rank-bg-1 { background: var(--gold); }
+        .rank-bg-2 { background: var(--silver); }
+        .rank-bg-3 { background: var(--bronze); }
+        .leader-info { flex: 1; }
+        .leader-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
         
-        .form-group { margin-bottom: 15px; flex: 1; min-width: 140px; }
-        label { font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 6px; display: block; }
-        
-        select, button, input { width: 100%; height: 45px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 14px; font-weight: 600; outline: none; }
-        button.primary { background: var(--primary); color: white; border: none; cursor: pointer; height: 50px; margin-top: 10px; }
-        
-        .admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
-        .stat-box { padding: 20px; border-radius: 15px; color: white; }
-        .bg-gold { background: linear-gradient(135deg, #b45309, #f59e0b); }
-        .bg-dark { background: #1e293b; }
-        
-        .table-wrapper { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; min-width: 350px; }
-        th { text-align: left; padding: 12px; background: #f8fafc; font-size: 11px; color: #64748b; }
-        td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
-        .billed { color: var(--success); font-weight: bold; }
-        .not-billed { color: var(--danger); font-weight: bold; }
-        
-        .chart-h { height: 300px; }
-        .ver-tag { background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 10px; color: #475569; }
+        .pulse-badge { font-size: 9px; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; font-weight: 900; }
+        .pulse-on { background: #dcfce7; color: #166534; border: 1px solid #16a34a; }
+        .pulse-off { background: #fee2e2; color: #991b1b; border: 1px solid #ef4444; }
+
+        .progress-bar { height: 10px; background: #e2e8f0; border-radius: 10px; overflow: hidden; position: relative; }
+        .progress-fill { height: 100%; transition: 0.5s ease-in-out; }
+        .target-marker { position: absolute; left: 20%; top: 0; bottom: 0; width: 2px; background: #1e293b; z-index: 5; opacity: 0.3; }
+
+        .leader-stats { text-align: right; margin-left: 20px; }
+        .leader-conv { font-weight: 800; font-size: 16px; }
+
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { padding: 20px; border-radius: 20px; color: white; text-align: center; }
+        .bg-blue { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+        .bg-purple { background: linear-gradient(135deg, #a855f7, #7c3aed); }
+
+        select, input { background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 12px; font-weight: 600; }
+        .btn-reset { background: var(--danger); color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 700; cursor: pointer; margin-top: 20px; font-size: 10px; }
     </style>
 </head>
 <body>
 
 <div id="authScreen">
     <div class="auth-card">
-        <h2 style="color:var(--primary); margin-top:0;">Daily Walkins Tracker</h2>
-        <p style="color:#64748b; font-size: 14px;">Enter password to access</p>
-        <input type="password" id="mainPass" placeholder="Enter Password" style="text-align:center; margin-bottom:15px;">
-        <button class="primary" onclick="checkAuth()">Login</button>
-        <p id="authError" style="color:var(--danger); font-size:12px; margin-top:10px; display:none;">Incorrect Password</p>
+        <h2 style="color:var(--primary)">STORE TRACKER</h2>
+        <input type="password" id="mainPass" placeholder="Password" style="width:100%; text-align:center; font-size:18px; margin-bottom:20px;">
+        <button class="nav-btn" style="width:100%; height:45px;" onclick="checkAuth()">SIGN IN</button>
     </div>
 </div>
 
 <div id="mainApp" class="hidden">
     <nav>
-        <div class="nav-title">Daily Walkins Tracker <span class="ver-tag" id="activeVerDisplay"></span></div>
-        <button class="nav-btn" onclick="adminAccess()">ADMIN PANEL</button>
+        <div class="nav-logo">Retail Pulse</div>
+        <button class="nav-btn" onclick="adminAccess()">ADMIN DASHBOARD</button>
     </nav>
 
     <div class="container">
         <div id="userPage">
-            <div class="card">
-                <h3>New Entry (Ankit)</h3>
-                <div class="form-group"><label>SALESMAN</label>
+            <div class="card" style="max-width: 450px; margin: 0 auto 20px;">
+                <h3 style="text-align:center;">Daily Entry</h3>
+                <div style="display:flex; flex-direction:column; gap:12px;">
                     <select id="salesman"><option value="Adarsh">Adarsh</option><option value="Arun">Arun</option><option value="Javid">Javid</option></select>
-                </div>
-                <div class="form-group"><label>STATUS</label>
                     <select id="status"><option value="Billed">Billed</option><option value="Not Billed">Not Billed</option></select>
+                    <button class="nav-btn" style="height:50px;" onclick="addEntry()">LOG WALK-IN</button>
                 </div>
-                <button class="primary" onclick="addEntry()">SUBMIT ENTRY</button>
             </div>
             <div class="card">
-                <h3>Today's Walkins</h3>
-                <div class="table-wrapper"><table id="userLogTable"><thead><tr><th>Time</th><th>Salesman</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+                <h3>Today's Log</h3>
+                <table id="userLogTable" style="width:100%; border-collapse:collapse; font-size:14px;">
+                    <thead><tr style="text-align:left; color:#64748b;"><th>Time</th><th>Salesman</th><th>Status</th></tr></thead>
+                    <tbody></tbody>
+                </table>
             </div>
         </div>
 
         <div id="adminPage" class="hidden">
-            <div class="card" style="background:#edf2f7;">
-                <label>VERSION & PERIOD CONTROL</label>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-                    <select id="versionSelect" onchange="switchVersion()"></select>
-                    <button onclick="renameVersion()" style="font-size:11px;">NEW VERSION</button>
-                </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 style="margin:0;">Performance Tracking</h2>
+                <div style="display:flex; gap:8px;">
                     <select id="filterMonth" onchange="updateUI()"></select>
                     <select id="filterYear" onchange="updateUI()"></select>
                 </div>
             </div>
 
-            <div class="admin-grid">
-                <div class="stat-box bg-gold">
-                    <div style="font-size: 11px;">🏆 TOP PERFORMER</div>
-                    <div id="topName" style="font-size: 24px; font-weight: 800;">-</div>
-                    <div id="topRate">Rate: 0%</div>
+            <div class="stat-grid">
+                <div class="stat-card bg-blue">
+                    <div style="font-size:11px; opacity:0.8;">OVERALL CONVERSION</div>
+                    <div id="storeConvRate" style="font-size:28px; font-weight:800;">0%</div>
+                    <div style="font-size:10px;">Monthly Target: 20%</div>
                 </div>
-                <div class="stat-box bg-dark">
-                    <div style="font-size: 11px;">📊 TOTAL BILLED</div>
-                    <div id="totalMonthBilled" style="font-size: 24px; font-weight: 800;">0</div>
-                    <div>Month Total</div>
+                <div class="stat-card bg-purple">
+                    <div style="font-size:11px; opacity:0.8;">TOTAL BILLED</div>
+                    <div id="totalBills" style="font-size:28px; font-weight:800;">0</div>
+                    <div id="billedDiff" style="font-size:10px;">Records Found</div>
                 </div>
             </div>
 
-            <div class="card" style="margin-top:15px;">
-                <h3>Salesman Stats</h3>
-                <div class="table-wrapper"><table id="salesTable"><thead><tr><th>Name</th><th>Walkins</th><th>Billed</th><th>%</th></tr></thead><tbody></tbody></table></div>
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <h3 style="margin:0;">Salesman Pulse (Target: 20%)</h3>
+                    <span style="font-size:10px; color:var(--danger); font-weight:bold;">⬤ Below</span>
+                    <span style="font-size:10px; color:var(--success); font-weight:bold;">⬤ Above</span>
+                </div>
+                <div id="leaderboardList"></div>
             </div>
 
-            <div class="admin-grid">
-                <div class="card"><h3>Today's Ratio</h3><div class="chart-h"><canvas id="pieChart"></canvas></div></div>
-                <div class="card"><h3>Traffic</h3><div class="chart-h"><canvas id="lineChart"></canvas></div></div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px;">
+                <div class="card"><h3>Monthly Ratio</h3><div style="height:250px;"><canvas id="pieChart"></canvas></div></div>
+                <div class="card"><h3>Traffic Analysis</h3><div style="height:250px;"><canvas id="lineChart"></canvas></div></div>
             </div>
 
-            <button onclick="logoutAdmin()" style="margin-top:10px;">Exit Admin Panel</button>
+            <div style="text-align:center; margin-top:30px;">
+                <button class="nav-btn" style="background:#64748b" onclick="logoutAdmin()">RETURN TO ENTRY</button><br>
+                <button class="btn-reset" onclick="resetData()">WIPE DATABASE</button>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
     Chart.register(ChartDataLabels);
-
-    let currentVersion = localStorage.getItem('active_version') || 'Default_v1.0';
-    let allVersions = JSON.parse(localStorage.getItem('version_list')) || ['Default_v1.0'];
-    let entries = JSON.parse(localStorage.getItem('data_' + currentVersion)) || [];
+    let entries = JSON.parse(localStorage.getItem('walkin_data')) || [];
     let pieChart, lineChart;
+    const TARGET_PERCENT = 20;
 
     function checkAuth() {
-        const pass = document.getElementById('mainPass').value;
-        if (pass === "user" || pass === "1996") {
+        const p = document.getElementById('mainPass').value;
+        if (p === "user" || p === "1996") {
             document.getElementById('authScreen').classList.add('hidden');
             document.getElementById('mainApp').classList.remove('hidden');
             setupApp();
-        } else {
-            document.getElementById('authError').style.display = 'block';
         }
     }
 
     function setupApp() {
-        const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-        const mSelect = document.getElementById('filterMonth');
-        months.forEach((m, i) => mSelect.innerHTML += `<option value="${i}">${m}</option>`);
-        [2025, 2026, 2027].forEach(y => document.getElementById('filterYear').innerHTML += `<option value="${y}">${y}</option>`);
-        
+        const mS = document.getElementById('filterMonth');
+        mS.innerHTML = "";
+        ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].forEach((m, i) => mS.innerHTML += `<option value="${i}">${m}</option>`);
+        document.getElementById('filterYear').innerHTML = `<option value="2025">2025</option><option value="2026">2026</option>`;
         const now = new Date();
-        mSelect.value = now.getMonth();
+        mS.value = now.getMonth();
         document.getElementById('filterYear').value = now.getFullYear();
-        
-        refreshVersionDropdown();
         updateUI();
     }
 
@@ -162,39 +166,12 @@
             document.getElementById('userPage').classList.add('hidden');
             document.getElementById('adminPage').classList.remove('hidden');
             updateUI();
-        } else { alert("Wrong Admin Password"); }
+        }
     }
 
     function logoutAdmin() {
         document.getElementById('adminPage').classList.add('hidden');
         document.getElementById('userPage').classList.remove('hidden');
-    }
-
-    function refreshVersionDropdown() {
-        const select = document.getElementById('versionSelect');
-        select.innerHTML = '';
-        allVersions.forEach(v => select.innerHTML += `<option value="${v}" ${v === currentVersion ? 'selected' : ''}>${v}</option>`);
-        document.getElementById('activeVerDisplay').innerText = currentVersion;
-    }
-
-    function switchVersion() {
-        currentVersion = document.getElementById('versionSelect').value;
-        localStorage.setItem('active_version', currentVersion);
-        entries = JSON.parse(localStorage.getItem('data_' + currentVersion)) || [];
-        updateUI();
-    }
-
-    function renameVersion() {
-        const name = prompt("New Version Name:");
-        if (name) {
-            localStorage.setItem('data_' + name, JSON.stringify(entries));
-            if (!allVersions.includes(name)) allVersions.push(name);
-            localStorage.setItem('version_list', JSON.stringify(allVersions));
-            currentVersion = name;
-            localStorage.setItem('active_version', currentVersion);
-            refreshVersionDropdown();
-            updateUI();
-        }
     }
 
     function addEntry() {
@@ -207,60 +184,90 @@
             month: now.getMonth().toString(),
             year: now.getFullYear().toString()
         });
-        localStorage.setItem('data_' + currentVersion, JSON.stringify(entries));
+        localStorage.setItem('walkin_data', JSON.stringify(entries));
         updateUI();
-        alert("Entry Saved");
+        alert("Entry Logged!");
     }
 
     function updateUI() {
-        const fMonth = document.getElementById('filterMonth').value;
-        const fYear = document.getElementById('filterYear').value;
+        const fM = document.getElementById('filterMonth').value;
+        const fY = document.getElementById('filterYear').value;
+        const periodData = entries.filter(e => e.month == fM && e.year == fY);
         const todayStr = new Date().toISOString().split('T')[0];
+        const todayData = entries.filter(e => e.date === todayStr);
 
-        const periodEntries = entries.filter(e => e.month == fMonth && e.year == fYear);
-        const todayEntries = entries.filter(e => e.date === todayStr);
+        const totalBilled = periodData.filter(e => e.status === 'Billed').length;
+        const storeConv = periodData.length > 0 ? (totalBilled/periodData.length*100) : 0;
+        
+        document.getElementById('storeConvRate').innerText = storeConv.toFixed(1) + "%";
+        document.getElementById('totalBills').innerText = totalBilled;
 
-        document.querySelector('#userLogTable tbody').innerHTML = todayEntries.slice().reverse().map(e => `
-            <tr><td>${e.time}</td><td>${e.salesman}</td><td class="${e.status==='Billed'?'billed':'not-billed'}">${e.status}</td></tr>
-        `).join('');
-
+        // PULSE LEADERBOARD
         const salesmen = ['Adarsh', 'Arun', 'Javid'];
-        let leaderboard = salesmen.map(name => {
-            const sData = periodEntries.filter(e => e.salesman === name);
-            const billed = sData.filter(e => e.status === 'Billed').length;
-            const conv = sData.length > 0 ? (billed / sData.length * 100) : 0;
-            return { name, total: sData.length, billed, conv };
+        let leaders = salesmen.map(name => {
+            const sData = periodData.filter(e => e.salesman === name);
+            const b = sData.filter(e => e.status === 'Billed').length;
+            const c = sData.length > 0 ? (b / sData.length * 100) : 0;
+            return { name, total: sData.length, billed: b, conv: c };
         }).sort((a, b) => b.conv - a.conv);
 
-        document.querySelector('#salesTable tbody').innerHTML = leaderboard.map(s => `
-            <tr><td>${s.name}</td><td>${s.total}</td><td>${s.billed}</td><td>${s.conv.toFixed(1)}%</td></tr>
+        document.getElementById('leaderboardList').innerHTML = leaders.map((s, i) => {
+            const isMeetingTarget = s.conv >= TARGET_PERCENT;
+            const barColor = isMeetingTarget ? 'var(--success)' : 'var(--danger)';
+            const badgeClass = isMeetingTarget ? 'pulse-on' : 'pulse-off';
+            const badgeText = isMeetingTarget ? 'Target Met' : 'Below Target';
+            
+            return `
+                <div class="leader-item">
+                    <div class="leader-rank rank-bg-${i+1}">${i+1}</div>
+                    <div class="leader-info">
+                        <div class="leader-name">
+                            ${s.name} 
+                            <span class="pulse-badge ${badgeClass}">${badgeText}</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="target-marker"></div>
+                            <div class="progress-fill" style="width:${s.conv}%; background:${barColor}"></div>
+                        </div>
+                    </div>
+                    <div class="leader-stats">
+                        <div class="leader-conv" style="color:${barColor}">${s.conv.toFixed(1)}%</div>
+                        <div style="font-size:10px; color:#64748b">${s.billed} Sales</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        document.querySelector('#userLogTable tbody').innerHTML = todayData.slice().reverse().map(e => `
+            <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0;">${e.time}</td><td>${e.salesman}</td><td style="color:${e.status==='Billed'?'var(--success)':'var(--danger)'}; font-weight:700;">${e.status}</td></tr>
         `).join('');
 
-        const top = leaderboard[0];
-        document.getElementById('topName').innerText = (top && top.total > 0) ? top.name : "-";
-        document.getElementById('topRate').innerText = `Rate: ${top ? top.conv.toFixed(1) : 0}%`;
-        document.getElementById('totalMonthBilled').innerText = periodEntries.filter(e => e.status === 'Billed').length;
-
-        if (!document.getElementById('adminPage').classList.contains('hidden')) renderCharts(periodEntries);
+        if (!document.getElementById('adminPage').classList.contains('hidden')) renderCharts(periodData, totalBilled, periodData.length - totalBilled);
     }
 
-    function renderCharts(periodEntries) {
-        const billed = periodEntries.filter(e => e.status === 'Billed').length;
-        const notBilled = periodEntries.length - billed;
+    function renderCharts(periodData, billed, notBilled) {
         if (pieChart) pieChart.destroy();
         pieChart = new Chart(document.getElementById('pieChart'), {
-            type: 'pie',
-            data: { labels: ['Billed', 'Not'], datasets: [{ data: [billed, notBilled], backgroundColor: ['#16a34a', '#ef4444'] }] },
-            options: { maintainAspectRatio: false, plugins: { datalabels: { color: '#fff', formatter: (v) => v || '' } } }
+            type: 'doughnut',
+            data: { labels: ['Success', 'Fail'], datasets: [{ data: [billed, notBilled], backgroundColor: ['#10b981', '#f87171'], cutout: '70%' }] },
+            options: { maintainAspectRatio: false, plugins: { datalabels: { display: true, color: '#fff' } } }
         });
 
-        const uniqueDates = [...new Set(periodEntries.map(e => e.date))].sort();
+        const dates = [...new Set(periodData.map(e => e.date))].sort();
         if (lineChart) lineChart.destroy();
         lineChart = new Chart(document.getElementById('lineChart'), {
             type: 'line',
-            data: { labels: uniqueDates.map(d => d.slice(5)), datasets: [{ label: 'Traffic', data: uniqueDates.map(d => periodEntries.filter(e => e.date === d).length), borderColor: '#2563eb', fill: true, backgroundColor: 'rgba(37, 99, 235, 0.1)' }] },
+            data: { labels: dates.map(d => d.slice(8)), datasets: [{ label: 'Walk-ins', data: dates.map(d => periodData.filter(e => e.date === d).length), borderColor: '#4f46e5', tension: 0.3 }] },
             options: { maintainAspectRatio: false, plugins: { datalabels: { display: false } } }
         });
+    }
+
+    function resetData() {
+        if (confirm("Delete all records? This cannot be undone.")) {
+            entries = [];
+            localStorage.removeItem('walkin_data');
+            updateUI();
+        }
     }
 </script>
 </body>
