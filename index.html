@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Store Tracker | Version Control</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <style>
+        :root { --primary: #2563eb; --success: #16a34a; --danger: #ef4444; --dark: #0f172a; --gold: #f59e0b; --bg: #f8fafc; }
+        * { box-sizing: border-box; font-family: -apple-system, sans-serif; }
+        body { background: var(--bg); margin: 0; padding: 0; color: var(--dark); }
+        
+        nav { background: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .nav-title { font-weight: 800; font-size: 0.9rem; color: var(--primary); text-transform: uppercase; }
+        .nav-btn { background: #f1f5f9; border: none; padding: 8px 15px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 11px; }
+
+        .container { max-width: 1000px; margin: auto; padding: 15px; }
+        .hidden { display: none !important; }
+        
+        .card { background: white; padding: 20px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 15px; border: 1px solid #e2e8f0; }
+        h3 { margin-top: 0; font-size: 1.1rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 15px; }
+        
+        .filter-row { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        .form-group { margin-bottom: 15px; flex: 1; min-width: 140px; }
+        label { font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 6px; display: block; }
+        
+        select, button, input { width: 100%; height: 45px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 14px; font-weight: 600; outline: none; }
+        button.primary { background: var(--primary); color: white; border: none; cursor: pointer; height: 50px; }
+        .btn-ver { background: #334155; color: white; border: none; font-size: 11px; cursor: pointer; }
+
+        .admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
+        .stat-box { padding: 20px; border-radius: 15px; color: white; }
+        .bg-gold { background: linear-gradient(135deg, #b45309, #f59e0b); }
+        .bg-dark { background: #1e293b; }
+        
+        .table-wrapper { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; min-width: 350px; }
+        th { text-align: left; padding: 12px; background: #f8fafc; font-size: 11px; color: #64748b; text-transform: uppercase; }
+        td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+        .billed { color: var(--success); font-weight: bold; }
+        .not-billed { color: var(--danger); font-weight: bold; }
+
+        .chart-h { height: 300px; padding: 10px; }
+        .ver-tag { display: inline-block; background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 10px; margin-left: 5px; color: #475569; }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="nav-title">
+        ANKIT'S ENTRY <span class="ver-tag" id="activeVerDisplay">Default_v1.0</span>
+    </div>
+    <button class="nav-btn" id="switchBtn" onclick="toggleView()">ADMIN LOGIN</button>
+</nav>
+
+<div class="container">
+    
+    <div id="userPage">
+        <div class="card">
+            <h3>Log New Walk-in</h3>
+            <div class="form-group"><label>SALESMAN</label>
+                <select id="salesman"><option value="Adarsh">Adarsh</option><option value="Arun">Arun</option><option value="Javid">Javid</option></select>
+            </div>
+            <div class="form-group"><label>STATUS</label>
+                <select id="status"><option value="Billed">Billed</option><option value="Not Billed">Not Billed</option></select>
+            </div>
+            <button class="primary" onclick="addEntry()">SUBMIT ENTRY</button>
+        </div>
+        <div class="card">
+            <h3>Today's History</h3>
+            <div class="table-wrapper"><table id="userLogTable"><thead><tr><th>Time</th><th>Salesman</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+        </div>
+    </div>
+
+    <div id="adminPage" class="hidden">
+        
+        <div class="card" style="background: #f1f5f9;">
+            <label>VERSION CONTROL</label>
+            <div class="filter-row">
+                <div class="form-group">
+                    <label>Active Version</label>
+                    <select id="versionSelect" onchange="switchVersion()"></select>
+                </div>
+                <div class="form-group">
+                    <label>Rename/New Version</label>
+                    <button class="btn-ver" onclick="renameVersion()">SAVE AS NEW VERSION</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <label>REPORTING PERIOD</label>
+            <div class="filter-row">
+                <div class="form-group"><select id="filterMonth" onchange="updateUI()"></select></div>
+                <div class="form-group"><select id="filterYear" onchange="updateUI()"></select></div>
+            </div>
+        </div>
+
+        <div class="admin-grid">
+            <div class="stat-box bg-gold">
+                <div style="font-size: 11px; opacity: 0.9;">🏆 PERIOD TOP PERFORMER</div>
+                <div id="topName" style="font-size: 26px; font-weight: 800; margin: 5px 0;">-</div>
+                <div id="topRate" style="font-size: 14px; font-weight: 600;">Rate: 0%</div>
+            </div>
+            <div class="stat-box bg-dark">
+                <div style="font-size: 11px; opacity: 0.9;">📊 TOTAL BILLED (PERIOD)</div>
+                <div id="totalMonthBilled" style="font-size: 26px; font-weight: 800; margin: 5px 0;">0</div>
+                <div style="font-size: 14px; opacity: 0.8;">Successful Closures</div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:20px">
+            <h3>Performance Breakdown</h3>
+            <div class="table-wrapper"><table id="salesTable"><thead><tr><th>Salesman</th><th>Walk-ins</th><th>Billed</th><th>Conv. %</th></tr></thead><tbody></tbody></table></div>
+        </div>
+
+        <div class="admin-grid">
+            <div class="card"><h3>Conversion Ratio</h3><div class="chart-h"><canvas id="pieChart"></canvas></div></div>
+            <div class="card"><h3>Traffic Trend</h3><div class="chart-h"><canvas id="lineChart"></canvas></div></div>
+        </div>
+
+        <div class="card">
+            <h3>Admin Activity Log</h3>
+            <div class="table-wrapper"><table id="adminLogTable"><thead><tr><th>Date</th><th>Time</th><th>Salesman</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    Chart.register(ChartDataLabels);
+
+    // VERSION LOGIC
+    let currentVersion = localStorage.getItem('active_version') || 'Default_v1.0';
+    let allVersions = JSON.parse(localStorage.getItem('version_list')) || ['Default_v1.0'];
+    let entries = JSON.parse(localStorage.getItem('data_' + currentVersion)) || [];
+    
+    let isAdmin = false;
+    let pieChart, lineChart;
+
+    window.onload = () => {
+        setupDateFilters();
+        refreshVersionDropdown();
+        updateUI();
+    };
+
+    function setupDateFilters() {
+        const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+        const mSelect = document.getElementById('filterMonth');
+        months.forEach((m, i) => mSelect.innerHTML += `<option value="${i}">${m}</option>`);
+        
+        const ySelect = document.getElementById('filterYear');
+        [2025, 2026, 2027].forEach(y => ySelect.innerHTML += `<option value="${y}">${y}</option>`);
+        
+        const now = new Date();
+        mSelect.value = now.getMonth();
+        ySelect.value = now.getFullYear();
+    }
+
+    // VERSION CONTROL FUNCTIONS
+    function refreshVersionDropdown() {
+        const select = document.getElementById('versionSelect');
+        select.innerHTML = '';
+        allVersions.forEach(v => {
+            select.innerHTML += `<option value="${v}" ${v === currentVersion ? 'selected' : ''}>${v}</option>`;
+        });
+        document.getElementById('activeVerDisplay').innerText = currentVersion;
+    }
+
+    function switchVersion() {
+        const newVer = document.getElementById('versionSelect').value;
+        currentVersion = newVer;
+        localStorage.setItem('active_version', currentVersion);
+        entries = JSON.parse(localStorage.getItem('data_' + currentVersion)) || [];
+        updateUI();
+        alert("Switched to Version: " + currentVersion);
+    }
+
+    function renameVersion() {
+        const newName = prompt("Enter New Version Name (e.g. Feb_2026_Final):", currentVersion);
+        if (newName && newName !== "") {
+            // Save existing data under new name
+            localStorage.setItem('data_' + newName, JSON.stringify(entries));
+            if (!allVersions.includes(newName)) {
+                allVersions.push(newName);
+                localStorage.setItem('version_list', JSON.stringify(allVersions));
+            }
+            currentVersion = newName;
+            localStorage.setItem('active_version', currentVersion);
+            refreshVersionDropdown();
+            updateUI();
+            alert("Saved as " + newName);
+        }
+    }
+
+    function toggleView() {
+        if (!isAdmin) {
+            if (prompt("Admin Password:") === "1996") {
+                isAdmin = true;
+                document.getElementById('userPage').classList.add('hidden');
+                document.getElementById('adminPage').classList.remove('hidden');
+                updateUI();
+            }
+        } else {
+            isAdmin = false;
+            document.getElementById('userPage').classList.remove('hidden');
+            document.getElementById('adminPage').classList.add('hidden');
+        }
+    }
+
+    function addEntry() {
+        const now = new Date();
+        entries.push({
+            date: now.toISOString().split('T')[0],
+            time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+            salesman: document.getElementById('salesman').value,
+            status: document.getElementById('status').value,
+            month: now.getMonth().toString(),
+            year: now.getFullYear().toString()
+        });
+        localStorage.setItem('data_' + currentVersion, JSON.stringify(entries));
+        updateUI();
+    }
+
+    function updateUI() {
+        const fMonth = document.getElementById('filterMonth').value;
+        const fYear = document.getElementById('filterYear').value;
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        const periodEntries = entries.filter(e => e.month == fMonth && e.year == fYear);
+        const todayEntries = entries.filter(e => e.date === todayStr);
+
+        document.querySelector('#userLogTable tbody').innerHTML = todayEntries.slice().reverse().map(e => `
+            <tr><td>${e.time}</td><td>${e.salesman}</td><td class="${e.status==='Billed'?'billed':'not-billed'}">${e.status}</td></tr>
+        `).join('');
+
+        if (isAdmin) {
+            document.querySelector('#adminLogTable tbody').innerHTML = periodEntries.slice().reverse().map(e => `
+                <tr><td>${e.date}</td><td>${e.time}</td><td>${e.salesman}</td><td class="${e.status==='Billed'?'billed':'not-billed'}">${e.status}</td></tr>
+            `).join('');
+
+            const salesmen = ['Adarsh', 'Arun', 'Javid'];
+            let leaderboardData = salesmen.map(name => {
+                const sData = periodEntries.filter(e => e.salesman === name);
+                const billed = sData.filter(e => e.status === 'Billed').length;
+                const conv = sData.length > 0 ? (billed / sData.length * 100) : 0;
+                return { name, total: sData.length, billed, conv };
+            }).sort((a, b) => b.conv - a.conv);
+
+            document.querySelector('#salesTable tbody').innerHTML = leaderboardData.map(s => `
+                <tr><td>${s.name}</td><td>${s.total}</td><td>${s.billed}</td><td>${s.conv.toFixed(1)}%</td></tr>
+            `).join('');
+
+            const top = leaderboardData[0];
+            document.getElementById('topName').innerText = (top && top.total > 0) ? top.name : "N/A";
+            document.getElementById('topRate').innerText = `Conv. Rate: ${top ? top.conv.toFixed(1) : 0}%`;
+            document.getElementById('totalMonthBilled').innerText = periodEntries.filter(e => e.status === 'Billed').length;
+            renderCharts(periodEntries);
+        }
+    }
+
+    function renderCharts(periodEntries) {
+        const billed = periodEntries.filter(e => e.status === 'Billed').length;
+        const notBilled = periodEntries.length - billed;
+        if (pieChart) pieChart.destroy();
+        pieChart = new Chart(document.getElementById('pieChart'), {
+            type: 'pie',
+            data: { labels: ['Billed', 'Not Billed'], datasets: [{ data: [billed, notBilled], backgroundColor: ['#16a34a', '#ef4444'] }] },
+            options: { maintainAspectRatio: false, plugins: { datalabels: { color: '#fff', formatter: (v) => v || '' } } }
+        });
+        
+        const uniqueDates = [...new Set(periodEntries.map(e => e.date))].sort();
+        if (lineChart) lineChart.destroy();
+        lineChart = new Chart(document.getElementById('lineChart'), {
+            type: 'line',
+            data: { labels: uniqueDates.map(d => d.slice(5)), datasets: [{ label: 'Traffic', data: uniqueDates.map(d => periodEntries.filter(e => e.date === d).length), borderColor: '#2563eb', fill: true, backgroundColor: 'rgba(37, 99, 235, 0.1)' }] },
+            options: { maintainAspectRatio: false, plugins: { datalabels: { display: false } } }
+        });
+    }
+</script>
+</body>
+</html>
