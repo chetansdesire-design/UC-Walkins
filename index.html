@@ -20,7 +20,6 @@
         * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
         body { background: #f1f5f9; margin: 0; color: var(--dark); }
 
-        /* Auth Layer */
         #authScreen { position: fixed; inset: 0; background: var(--dark); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 20px; }
         .auth-card { background: var(--white); padding: 40px; border-radius: 24px; width: 100%; max-width: 380px; text-align: center; }
 
@@ -32,7 +31,6 @@
         .hidden { display: none !important; }
         .card { background: var(--white); padding: 20px; border-radius: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px; }
         
-        /* Pulse Leaderboard */
         .leader-item { display: flex; align-items: center; padding: 15px; border-radius: 15px; background: #f8fafc; margin-bottom: 10px; border: 1px solid #e2e8f0; }
         .leader-rank { width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; margin-right: 15px; color: white; }
         .rank-bg-1 { background: var(--gold); }
@@ -57,7 +55,7 @@
         .bg-blue { background: linear-gradient(135deg, #6366f1, #4f46e5); }
         .bg-purple { background: linear-gradient(135deg, #a855f7, #7c3aed); }
 
-        select, input { background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 12px; font-weight: 600; }
+        select, input { background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 12px; font-weight: 600; font-size: 14px; }
         .btn-reset { background: var(--danger); color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 700; cursor: pointer; margin-top: 20px; font-size: 10px; }
     </style>
 </head>
@@ -82,6 +80,9 @@
             <div class="card" style="max-width: 450px; margin: 0 auto 20px;">
                 <h3 style="text-align:center;">Daily Entry</h3>
                 <div style="display:flex; flex-direction:column; gap:12px;">
+                    <label style="font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: -8px;">SELECT DATE</label>
+                    <input type="date" id="entryDate">
+                    
                     <select id="salesman"><option value="Adarsh">Adarsh</option><option value="Arun">Arun</option><option value="Javid">Javid</option></select>
                     <select id="status"><option value="Billed">Billed</option><option value="Not Billed">Not Billed</option></select>
                     <button class="nav-btn" id="logBtn" style="height:50px;" onclick="addEntry()">LOG WALK-IN</button>
@@ -141,7 +142,6 @@
 </div>
 
 <script>
-    // 1. FIREBASE CONFIG
     const firebaseConfig = {
         databaseURL: "https://daily-walkins-5fa02-default-rtdb.firebaseio.com/",
         projectId: "daily-walkins-5fa02",
@@ -149,13 +149,17 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // 2. APP STATE
     Chart.register(ChartDataLabels);
     let entries = [];
     let pieChart, lineChart;
     const TARGET_PERCENT = 20;
 
-    // 3. REAL-TIME DATA LISTENER
+    // Initialize Default Date to Today
+    window.onload = () => {
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('entryDate').value = today;
+    };
+
     db.ref('walkin_data').on('value', (snapshot) => {
         const data = snapshot.val();
         entries = data ? Object.values(data) : [];
@@ -164,7 +168,6 @@
 
     function checkAuth() {
         const p = document.getElementById('mainPass').value;
-        // Updated admin789 password
         if (p === "user" || p === "admin789") {
             document.getElementById('authScreen').classList.add('hidden');
             document.getElementById('mainApp').classList.remove('hidden');
@@ -196,16 +199,20 @@
     }
 
     function addEntry() {
+        const selectedDateStr = document.getElementById('entryDate').value;
+        if(!selectedDateStr) return alert("Please select a date.");
+
+        const selectedDate = new Date(selectedDateStr);
         const now = new Date();
         const btn = document.getElementById('logBtn');
         
         const newEntry = {
-            date: now.toISOString().split('T')[0],
+            date: selectedDateStr,
             time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
             salesman: document.getElementById('salesman').value,
             status: document.getElementById('status').value,
-            month: now.getMonth().toString(),
-            year: now.getFullYear().toString(),
+            month: selectedDate.getMonth().toString(),
+            year: selectedDate.getFullYear().toString(),
             timestamp: Date.now()
         };
 
@@ -215,7 +222,7 @@
         db.ref('walkin_data').push(newEntry).then(() => {
             btn.disabled = false;
             btn.innerText = "LOG WALK-IN";
-            alert("Entry Logged Online!");
+            alert("Entry Logged for " + selectedDateStr);
         });
     }
 
