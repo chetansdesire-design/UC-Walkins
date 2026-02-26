@@ -4,8 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Daily Walkins Tracker | Target Pulse</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    
     <style>
         :root { 
             --primary: #4f46e5; --success: #10b981; --danger: #ef4444; 
@@ -79,7 +84,7 @@
                 <div style="display:flex; flex-direction:column; gap:12px;">
                     <select id="salesman"><option value="Adarsh">Adarsh</option><option value="Arun">Arun</option><option value="Javid">Javid</option></select>
                     <select id="status"><option value="Billed">Billed</option><option value="Not Billed">Not Billed</option></select>
-                    <button class="nav-btn" style="height:50px;" onclick="addEntry()">LOG WALK-IN</button>
+                    <button class="nav-btn" id="logBtn" style="height:50px;" onclick="addEntry()">LOG WALK-IN</button>
                 </div>
             </div>
             <div class="card">
@@ -136,14 +141,31 @@
 </div>
 
 <script>
+    // 1. FIREBASE CONFIG
+    const firebaseConfig = {
+        databaseURL: "https://daily-walkins-5fa02-default-rtdb.firebaseio.com/",
+        projectId: "daily-walkins-5fa02",
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // 2. APP STATE
     Chart.register(ChartDataLabels);
-    let entries = JSON.parse(localStorage.getItem('walkin_data')) || [];
+    let entries = [];
     let pieChart, lineChart;
     const TARGET_PERCENT = 20;
 
+    // 3. REAL-TIME DATA LISTENER
+    db.ref('walkin_data').on('value', (snapshot) => {
+        const data = snapshot.val();
+        entries = data ? Object.values(data) : [];
+        updateUI();
+    });
+
     function checkAuth() {
         const p = document.getElementById('mainPass').value;
-        if (p === "user" || p === "1996") {
+        // Updated admin789 password
+        if (p === "user" || p === "admin789") {
             document.getElementById('authScreen').classList.add('hidden');
             document.getElementById('mainApp').classList.remove('hidden');
             setupApp();
@@ -158,11 +180,10 @@
         const now = new Date();
         mS.value = now.getMonth();
         document.getElementById('filterYear').value = now.getFullYear();
-        updateUI();
     }
 
     function adminAccess() {
-        if (prompt("Admin Password:") === "1996") {
+        if (prompt("Admin Password:") === "admin789") {
             document.getElementById('userPage').classList.add('hidden');
             document.getElementById('adminPage').classList.remove('hidden');
             updateUI();
@@ -176,23 +197,32 @@
 
     function addEntry() {
         const now = new Date();
-        entries.push({
+        const btn = document.getElementById('logBtn');
+        
+        const newEntry = {
             date: now.toISOString().split('T')[0],
             time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
             salesman: document.getElementById('salesman').value,
             status: document.getElementById('status').value,
             month: now.getMonth().toString(),
-            year: now.getFullYear().toString()
+            year: now.getFullYear().toString(),
+            timestamp: Date.now()
+        };
+
+        btn.disabled = true;
+        btn.innerText = "SAVING...";
+
+        db.ref('walkin_data').push(newEntry).then(() => {
+            btn.disabled = false;
+            btn.innerText = "LOG WALK-IN";
+            alert("Entry Logged Online!");
         });
-        localStorage.setItem('walkin_data', JSON.stringify(entries));
-        updateUI();
-        alert("Entry Logged!");
     }
 
     function updateUI() {
         const fM = document.getElementById('filterMonth').value;
         const fY = document.getElementById('filterYear').value;
-        const periodData = entries.filter(e => e.month == fM && e.year == fY);
+        const periodData = entries.filter(e => String(e.month) === String(fM) && String(e.year) === String(fY));
         const todayStr = new Date().toISOString().split('T')[0];
         const todayData = entries.filter(e => e.date === todayStr);
 
@@ -202,7 +232,6 @@
         document.getElementById('storeConvRate').innerText = storeConv.toFixed(1) + "%";
         document.getElementById('totalBills').innerText = totalBilled;
 
-        // PULSE LEADERBOARD
         const salesmen = ['Adarsh', 'Arun', 'Javid'];
         let leaders = salesmen.map(name => {
             const sData = periodData.filter(e => e.salesman === name);
@@ -263,10 +292,8 @@
     }
 
     function resetData() {
-        if (confirm("Delete all records? This cannot be undone.")) {
-            entries = [];
-            localStorage.removeItem('walkin_data');
-            updateUI();
+        if (confirm("Delete all cloud records? This cannot be undone.")) {
+            db.ref('walkin_data').remove();
         }
     }
 </script>
