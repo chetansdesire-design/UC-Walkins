@@ -36,6 +36,8 @@
         .rank-bg-1 { background: var(--gold); }
         .rank-bg-2 { background: var(--silver); }
         .rank-bg-3 { background: var(--bronze); }
+        .rank-bg-other { background: #cbd5e1; }
+        
         .leader-info { flex: 1; }
         .leader-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
         
@@ -45,7 +47,6 @@
 
         .progress-bar { height: 10px; background: #e2e8f0; border-radius: 10px; overflow: hidden; position: relative; }
         .progress-fill { height: 100%; transition: 0.5s ease-in-out; }
-        .target-marker { position: absolute; left: 20%; top: 0; bottom: 0; width: 2px; background: #1e293b; z-index: 5; opacity: 0.3; }
 
         .leader-stats { text-align: right; margin-left: 20px; }
         .leader-conv { font-weight: 800; font-size: 16px; }
@@ -55,7 +56,6 @@
         .bg-blue { background: linear-gradient(135deg, #6366f1, #4f46e5); }
         .bg-purple { background: linear-gradient(135deg, #a855f7, #7c3aed); }
 
-        /* Salesman Breakdown Grid */
         .breakdown-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 20px; }
         .breakdown-card { background: #f8fafc; padding: 15px; border-radius: 15px; border: 1px solid #e2e8f0; text-align: center; }
         .breakdown-label { font-size: 10px; color: #64748b; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; }
@@ -63,6 +63,10 @@
 
         select, input { background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 12px; font-weight: 600; font-size: 14px; }
         .btn-reset { background: var(--danger); color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 700; cursor: pointer; margin-top: 20px; font-size: 10px; }
+        
+        /* Staff Management List Style */
+        .staff-list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+        .staff-list-item:last-child { border: none; }
     </style>
 </head>
 <body>
@@ -87,8 +91,8 @@
                 <h3 style="text-align:center;">Daily Entry</h3>
                 <div style="display:flex; flex-direction:column; gap:12px;">
                     <label style="font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: -8px;">SELECT DATE</label>
-                    <input type="date" id="entryDate">
-                    <select id="salesman"><option value="Adarsh">Adarsh</option><option value="Arun">Arun</option><option value="Javid">Javid</option></select>
+                    <input type="date" id="entryDate" onchange="syncSalesmanDropdown()">
+                    <select id="salesman"></select>
                     <select id="status"><option value="Billed">Billed</option><option value="Not Billed">Not Billed</option></select>
                     <button class="nav-btn" id="logBtn" style="height:50px;" onclick="addEntry()">LOG WALK-IN</button>
                 </div>
@@ -103,8 +107,19 @@
         </div>
 
         <div id="adminPage" class="hidden">
+            <div class="card" style="border: 2px solid var(--primary);">
+                <h3>Staff Management</h3>
+                <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:10px; margin-bottom:15px;">
+                    <input type="text" id="newStaffName" placeholder="Name">
+                    <input type="date" id="staffExpiry" title="Active Until">
+                    <button class="nav-btn" onclick="addStaffMember()">ADD</button>
+                </div>
+                <div id="adminStaffList"></div>
+                <p style="font-size: 10px; color: #64748b; margin-top: 10px;">* Setting an 'Active Until' date will hide them from the dropdown after that date.</p>
+            </div>
+
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                <h2 style="margin:0;">Performance Tracking</h2>
+                <h2 style="margin:0;">Performance</h2>
                 <div style="display:flex; gap:8px;">
                     <select id="filterMonth" onchange="updateUI()"></select>
                     <select id="filterYear" onchange="updateUI()"></select>
@@ -130,9 +145,7 @@
             </div>
 
             <div class="card">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                    <h3 style="margin:0;">Leaderboard (Target: 20%)</h3>
-                </div>
+                <h3>Leaderboard (Target: 20%)</h3>
                 <div id="leaderboardList"></div>
             </div>
 
@@ -150,6 +163,7 @@
 </div>
 
 <script>
+    // --- INITIALIZATION ---
     const firebaseConfig = {
         databaseURL: "https://daily-walkins-5fa02-default-rtdb.firebaseio.com/",
         projectId: "daily-walkins-5fa02",
@@ -159,37 +173,36 @@
 
     Chart.register(ChartDataLabels);
     let entries = [];
+    let staff = {};
     let pieChart, lineChart;
     const TARGET_PERCENT = 20;
 
     window.onload = () => {
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('entryDate').value = today;
+        setupApp();
     };
 
+    // --- DATA SYNC ---
     db.ref('walkin_data').on('value', (snapshot) => {
         const data = snapshot.val();
         entries = data ? Object.values(data) : [];
         updateUI();
     });
 
+    db.ref('staff').on('value', (snapshot) => {
+        staff = snapshot.val() || {};
+        syncSalesmanDropdown();
+        renderAdminStaffList();
+    });
+
+    // --- AUTH ---
     function checkAuth() {
         const p = document.getElementById('mainPass').value;
         if (p === "user" || p === "admin789") {
             document.getElementById('authScreen').classList.add('hidden');
             document.getElementById('mainApp').classList.remove('hidden');
-            setupApp();
         }
-    }
-
-    function setupApp() {
-        const mS = document.getElementById('filterMonth');
-        mS.innerHTML = "";
-        ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].forEach((m, i) => mS.innerHTML += `<option value="${i}">${m}</option>`);
-        document.getElementById('filterYear').innerHTML = `<option value="2025">2025</option><option value="2026">2026</option>`;
-        const now = new Date();
-        mS.value = now.getMonth();
-        document.getElementById('filterYear').value = now.getFullYear();
     }
 
     function adminAccess() {
@@ -205,27 +218,75 @@
         document.getElementById('userPage').classList.remove('hidden');
     }
 
+    // --- STAFF MANAGEMENT ---
+    function addStaffMember() {
+        const name = document.getElementById('newStaffName').value;
+        const expiry = document.getElementById('staffExpiry').value;
+        if (!name) return alert("Please enter name");
+        db.ref('staff').push({ name, activeUntil: expiry || null });
+        document.getElementById('newStaffName').value = "";
+        document.getElementById('staffExpiry').value = "";
+    }
+
+    function deleteStaff(id) {
+        if(confirm("Remove this staff member?")) db.ref(`staff/${id}`).remove();
+    }
+
+    function renderAdminStaffList() {
+        const listDiv = document.getElementById('adminStaffList');
+        listDiv.innerHTML = Object.keys(staff).map(id => `
+            <div class="staff-list-item">
+                <span><strong>${staff[id].name}</strong> ${staff[id].activeUntil ? `<span style="color:var(--danger)"> (Left: ${staff[id].activeUntil})</span>` : ' <span style="color:var(--success)">● Active</span>'}</span>
+                <button onclick="deleteStaff('${id}')" style="border:none; color:var(--danger); background:none; cursor:pointer; font-weight:bold;">DELETE</button>
+            </div>
+        `).join('');
+    }
+
+    function syncSalesmanDropdown() {
+        const select = document.getElementById('salesman');
+        const selectedDate = new Date(document.getElementById('entryDate').value);
+        select.innerHTML = "";
+        
+        Object.values(staff).forEach(person => {
+            const expiry = person.activeUntil ? new Date(person.activeUntil) : null;
+            if (!expiry || selectedDate < expiry) {
+                const opt = document.createElement('option');
+                opt.value = person.name;
+                opt.textContent = person.name;
+                select.appendChild(opt);
+            }
+        });
+    }
+
+    // --- CORE APP LOGIC ---
+    function setupApp() {
+        const mS = document.getElementById('filterMonth');
+        ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].forEach((m, i) => mS.innerHTML += `<option value="${i}">${m}</option>`);
+        document.getElementById('filterYear').innerHTML = `<option value="2025">2025</option><option value="2026">2026</option>`;
+        const now = new Date();
+        mS.value = now.getMonth();
+        document.getElementById('filterYear').value = now.getFullYear();
+    }
+
     function addEntry() {
         const selectedDateStr = document.getElementById('entryDate').value;
-        if(!selectedDateStr) return alert("Please select a date.");
-        const selectedDate = new Date(selectedDateStr);
-        const now = new Date();
+        const salesman = document.getElementById('salesman').value;
+        if(!salesman) return alert("Select a salesman");
+        
         const btn = document.getElementById('logBtn');
+        const selectedDate = new Date(selectedDateStr);
         const newEntry = {
             date: selectedDateStr,
-            time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
-            salesman: document.getElementById('salesman').value,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+            salesman: salesman,
             status: document.getElementById('status').value,
             month: selectedDate.getMonth().toString(),
             year: selectedDate.getFullYear().toString(),
             timestamp: Date.now()
         };
-        btn.disabled = true;
-        btn.innerText = "SAVING...";
+        btn.disabled = true; btn.innerText = "SAVING...";
         db.ref('walkin_data').push(newEntry).then(() => {
-            btn.disabled = false;
-            btn.innerText = "LOG WALK-IN";
-            alert("Entry Logged!");
+            btn.disabled = false; btn.innerText = "LOG WALK-IN";
         });
     }
 
@@ -241,40 +302,40 @@
         document.getElementById('storeConvRate').innerText = storeConv.toFixed(1) + "%";
         document.getElementById('totalBills').innerText = totalBilled;
 
-        const salesmen = ['Adarsh', 'Arun', 'Javid'];
-        
-        // Month-wise Breakdown UI
-        document.getElementById('salesmanBreakdown').innerHTML = salesmen.map(name => {
+        // Auto-detect names present in this month's data
+        const salesmenList = [...new Set(periodData.map(e => e.salesman))];
+
+        // Monthly Breakdown
+        document.getElementById('salesmanBreakdown').innerHTML = salesmenList.map(name => {
             const sData = periodData.filter(e => e.salesman === name);
             const b = sData.filter(e => e.status === 'Billed').length;
-            const nb = sData.length - b;
             const c = sData.length > 0 ? (b / sData.length * 100).toFixed(1) : 0;
             return `
                 <div class="breakdown-card">
                     <div style="font-weight:900; color:var(--primary); margin-bottom:10px; border-bottom:1px solid #e2e8f0; padding-bottom:5px;">${name.toUpperCase()}</div>
                     <div style="display:flex; justify-content:space-around;">
                         <div><div class="breakdown-label">Billed</div><div class="breakdown-val" style="color:var(--success)">${b}</div></div>
-                        <div><div class="breakdown-label">Not Billed</div><div class="breakdown-val" style="color:var(--danger)">${nb}</div></div>
+                        <div><div class="breakdown-label">Not Billed</div><div class="breakdown-val" style="color:var(--danger)">${sData.length - b}</div></div>
                         <div><div class="breakdown-label">Conv.</div><div class="breakdown-val">${c}%</div></div>
                     </div>
                 </div>
             `;
         }).join('');
 
-        // Leaderboard UI
-        let leaders = salesmen.map(name => {
+        // Leaderboard
+        let leaders = salesmenList.map(name => {
             const sData = periodData.filter(e => e.salesman === name);
             const b = sData.filter(e => e.status === 'Billed').length;
-            const c = sData.length > 0 ? (b / sData.length * 100) : 0;
-            return { name, total: sData.length, billed: b, conv: c };
+            return { name, total: sData.length, billed: b, conv: sData.length > 0 ? (b / sData.length * 100) : 0 };
         }).sort((a, b) => b.conv - a.conv);
 
         document.getElementById('leaderboardList').innerHTML = leaders.map((s, i) => {
             const isMeetingTarget = s.conv >= TARGET_PERCENT;
             const barColor = isMeetingTarget ? 'var(--success)' : 'var(--danger)';
+            const rankClass = i < 3 ? `rank-bg-${i+1}` : 'rank-bg-other';
             return `
                 <div class="leader-item">
-                    <div class="leader-rank rank-bg-${i+1}">${i+1}</div>
+                    <div class="leader-rank ${rankClass}">${i+1}</div>
                     <div class="leader-info">
                         <div class="leader-name">${s.name} <span class="pulse-badge ${isMeetingTarget?'pulse-on':'pulse-off'}">${isMeetingTarget?'Target Met':'Below'}</span></div>
                         <div class="progress-bar"><div class="progress-fill" style="width:${s.conv}%; background:${barColor}"></div></div>
@@ -284,6 +345,7 @@
             `;
         }).join('');
 
+        // User Daily Log Table
         document.querySelector('#userLogTable tbody').innerHTML = todayData.slice().reverse().map(e => `
             <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px 0;">${e.time}</td><td>${e.salesman}</td><td style="color:${e.status==='Billed'?'var(--success)':'var(--danger)'}; font-weight:700;">${e.status}</td></tr>
         `).join('');
