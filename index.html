@@ -55,6 +55,12 @@
         .bg-blue { background: linear-gradient(135deg, #6366f1, #4f46e5); }
         .bg-purple { background: linear-gradient(135deg, #a855f7, #7c3aed); }
 
+        /* Salesman Breakdown Grid */
+        .breakdown-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .breakdown-card { background: #f8fafc; padding: 15px; border-radius: 15px; border: 1px solid #e2e8f0; text-align: center; }
+        .breakdown-label { font-size: 10px; color: #64748b; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; }
+        .breakdown-val { font-size: 18px; font-weight: 800; }
+
         select, input { background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 12px; font-weight: 600; font-size: 14px; }
         .btn-reset { background: var(--danger); color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 700; cursor: pointer; margin-top: 20px; font-size: 10px; }
     </style>
@@ -82,7 +88,6 @@
                 <div style="display:flex; flex-direction:column; gap:12px;">
                     <label style="font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: -8px;">SELECT DATE</label>
                     <input type="date" id="entryDate">
-                    
                     <select id="salesman"><option value="Adarsh">Adarsh</option><option value="Arun">Arun</option><option value="Javid">Javid</option></select>
                     <select id="status"><option value="Billed">Billed</option><option value="Not Billed">Not Billed</option></select>
                     <button class="nav-btn" id="logBtn" style="height:50px;" onclick="addEntry()">LOG WALK-IN</button>
@@ -120,16 +125,19 @@
             </div>
 
             <div class="card">
+                <h3>Salesman Monthly Breakdown</h3>
+                <div id="salesmanBreakdown" class="breakdown-grid"></div>
+            </div>
+
+            <div class="card">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                    <h3 style="margin:0;">Salesman Pulse (Target: 20%)</h3>
-                    <span style="font-size:10px; color:var(--danger); font-weight:bold;">⬤ Below</span>
-                    <span style="font-size:10px; color:var(--success); font-weight:bold;">⬤ Above</span>
+                    <h3 style="margin:0;">Leaderboard (Target: 20%)</h3>
                 </div>
                 <div id="leaderboardList"></div>
             </div>
 
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px;">
-                <div class="card"><h3>Monthly Ratio</h3><div style="height:250px;"><canvas id="pieChart"></canvas></div></div>
+                <div class="card"><h3>Total Store Ratio</h3><div style="height:250px;"><canvas id="pieChart"></canvas></div></div>
                 <div class="card"><h3>Traffic Analysis</h3><div style="height:250px;"><canvas id="lineChart"></canvas></div></div>
             </div>
 
@@ -154,7 +162,6 @@
     let pieChart, lineChart;
     const TARGET_PERCENT = 20;
 
-    // Initialize Default Date to Today
     window.onload = () => {
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('entryDate').value = today;
@@ -201,11 +208,9 @@
     function addEntry() {
         const selectedDateStr = document.getElementById('entryDate').value;
         if(!selectedDateStr) return alert("Please select a date.");
-
         const selectedDate = new Date(selectedDateStr);
         const now = new Date();
         const btn = document.getElementById('logBtn');
-        
         const newEntry = {
             date: selectedDateStr,
             time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
@@ -215,14 +220,12 @@
             year: selectedDate.getFullYear().toString(),
             timestamp: Date.now()
         };
-
         btn.disabled = true;
         btn.innerText = "SAVING...";
-
         db.ref('walkin_data').push(newEntry).then(() => {
             btn.disabled = false;
             btn.innerText = "LOG WALK-IN";
-            alert("Entry Logged for " + selectedDateStr);
+            alert("Entry Logged!");
         });
     }
 
@@ -235,11 +238,30 @@
 
         const totalBilled = periodData.filter(e => e.status === 'Billed').length;
         const storeConv = periodData.length > 0 ? (totalBilled/periodData.length*100) : 0;
-        
         document.getElementById('storeConvRate').innerText = storeConv.toFixed(1) + "%";
         document.getElementById('totalBills').innerText = totalBilled;
 
         const salesmen = ['Adarsh', 'Arun', 'Javid'];
+        
+        // Month-wise Breakdown UI
+        document.getElementById('salesmanBreakdown').innerHTML = salesmen.map(name => {
+            const sData = periodData.filter(e => e.salesman === name);
+            const b = sData.filter(e => e.status === 'Billed').length;
+            const nb = sData.length - b;
+            const c = sData.length > 0 ? (b / sData.length * 100).toFixed(1) : 0;
+            return `
+                <div class="breakdown-card">
+                    <div style="font-weight:900; color:var(--primary); margin-bottom:10px; border-bottom:1px solid #e2e8f0; padding-bottom:5px;">${name.toUpperCase()}</div>
+                    <div style="display:flex; justify-content:space-around;">
+                        <div><div class="breakdown-label">Billed</div><div class="breakdown-val" style="color:var(--success)">${b}</div></div>
+                        <div><div class="breakdown-label">Not Billed</div><div class="breakdown-val" style="color:var(--danger)">${nb}</div></div>
+                        <div><div class="breakdown-label">Conv.</div><div class="breakdown-val">${c}%</div></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Leaderboard UI
         let leaders = salesmen.map(name => {
             const sData = periodData.filter(e => e.salesman === name);
             const b = sData.filter(e => e.status === 'Billed').length;
@@ -250,26 +272,14 @@
         document.getElementById('leaderboardList').innerHTML = leaders.map((s, i) => {
             const isMeetingTarget = s.conv >= TARGET_PERCENT;
             const barColor = isMeetingTarget ? 'var(--success)' : 'var(--danger)';
-            const badgeClass = isMeetingTarget ? 'pulse-on' : 'pulse-off';
-            const badgeText = isMeetingTarget ? 'Target Met' : 'Below Target';
-            
             return `
                 <div class="leader-item">
                     <div class="leader-rank rank-bg-${i+1}">${i+1}</div>
                     <div class="leader-info">
-                        <div class="leader-name">
-                            ${s.name} 
-                            <span class="pulse-badge ${badgeClass}">${badgeText}</span>
-                        </div>
-                        <div class="progress-bar">
-                            <div class="target-marker"></div>
-                            <div class="progress-fill" style="width:${s.conv}%; background:${barColor}"></div>
-                        </div>
+                        <div class="leader-name">${s.name} <span class="pulse-badge ${isMeetingTarget?'pulse-on':'pulse-off'}">${isMeetingTarget?'Target Met':'Below'}</span></div>
+                        <div class="progress-bar"><div class="progress-fill" style="width:${s.conv}%; background:${barColor}"></div></div>
                     </div>
-                    <div class="leader-stats">
-                        <div class="leader-conv" style="color:${barColor}">${s.conv.toFixed(1)}%</div>
-                        <div style="font-size:10px; color:#64748b">${s.billed} Sales</div>
-                    </div>
+                    <div class="leader-stats"><div class="leader-conv" style="color:${barColor}">${s.conv.toFixed(1)}%</div></div>
                 </div>
             `;
         }).join('');
@@ -288,7 +298,6 @@
             data: { labels: ['Success', 'Fail'], datasets: [{ data: [billed, notBilled], backgroundColor: ['#10b981', '#f87171'], cutout: '70%' }] },
             options: { maintainAspectRatio: false, plugins: { datalabels: { display: true, color: '#fff' } } }
         });
-
         const dates = [...new Set(periodData.map(e => e.date))].sort();
         if (lineChart) lineChart.destroy();
         lineChart = new Chart(document.getElementById('lineChart'), {
@@ -299,9 +308,7 @@
     }
 
     function resetData() {
-        if (confirm("Delete all cloud records? This cannot be undone.")) {
-            db.ref('walkin_data').remove();
-        }
+        if (confirm("Delete all cloud records?")) db.ref('walkin_data').remove();
     }
 </script>
 </body>
