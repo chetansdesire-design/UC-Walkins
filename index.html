@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Retail Pulse | Trend & Compare</title>
+    <title>Retail Pulse | Performance Dashboard</title>
     
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
@@ -31,6 +31,8 @@
         th { text-align: left; color: #64748b; padding: 12px 5px; border-bottom: 2px solid #f1f5f9; font-weight: 800; }
         td { padding: 12px 5px; border-bottom: 1px solid #f8fafc; }
         select, input { background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 12px; font-weight: 800; width: 100%; margin-bottom: 10px; }
+        .del-btn { color: #cbd5e1; border: none; background: none; cursor: pointer; font-size: 16px; }
+        .del-btn:hover { color: var(--danger); }
         @media print { .no-print { display: none !important; } }
     </style>
 </head>
@@ -58,7 +60,7 @@
             </div>
             <div class="card">
                 <h3>Today's History</h3>
-                <table id="userLogTable"><thead><tr><th>Time</th><th>Salesman</th><th>Status</th></tr></thead><tbody></tbody></table>
+                <table id="userLogTable"><thead><tr><th>Time</th><th>Salesman</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
             </div>
         </div>
 
@@ -96,12 +98,16 @@
                 <div class="stat-card" id="growthCard" style="background: #6366f1;"><div>YOY GROWTH</div><div id="convGrowth" style="font-size:24px; font-weight:900;">0%</div></div>
             </div>
 
-            <h3 style="text-align:center;">🏆 Podium</h3>
+            <div id="monthlySummary" class="card" style="text-align: center; border-left: 10px solid var(--primary);">
+                <h3 style="margin:0">🏆 Performer of the Month</h3>
+                <div id="topPerformerText" style="font-size: 22px; font-weight: 900; color: var(--primary); margin-top:10px;">Calculating...</div>
+            </div>
+
+            <h3 style="text-align:center;">🎖️ Performance Podium</h3>
             <div id="rank1Area"></div>
             <div id="rank23Area" class="podium-grid"></div>
 
             <div class="card"><h3>Daily Traffic Trend</h3><div style="height:250px;"><canvas id="trendChart"></canvas></div></div>
-            
             <div class="card"><h3>Monthly Conversion Trend</h3><div style="height:350px;"><canvas id="conversionTrendChart"></canvas></div></div>
 
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:20px;">
@@ -125,11 +131,32 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     Chart.register(ChartDataLabels);
-    let entries = []; let staff = {}; let charts = {};
+    let entries = []; let staff = {}; let charts = {}; let rawData = {};
 
-    function checkAuth() { if (document.getElementById('mainPass').value === "user" || document.getElementById('mainPass').value === "admin789") document.getElementById('authScreen').classList.add('hidden'), document.getElementById('mainApp').classList.remove('hidden'); }
-    function adminAccess() { if (prompt("Admin Password:") === "admin789") document.getElementById('userPage').classList.add('hidden'), document.getElementById('adminPage').classList.remove('hidden'), updateUI(); }
-    function logoutAdmin() { document.getElementById('adminPage').classList.add('hidden'), document.getElementById('userPage').classList.remove('hidden'); }
+    // Helper: Normalize names (e.g., " john " -> "John")
+    const normalize = (name) => name.trim().charAt(0).toUpperCase() + name.trim().slice(1).toLowerCase();
+
+    function checkAuth() { 
+        const pass = document.getElementById('mainPass').value;
+        if (pass === "user" || pass === "admin789") {
+            document.getElementById('authScreen').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+        } 
+    }
+
+    function adminAccess() { 
+        if (prompt("Admin Password:") === "admin789") {
+            document.getElementById('userPage').classList.add('hidden');
+            document.getElementById('adminPage').classList.remove('hidden');
+            updateUI();
+        } 
+    }
+
+    function logoutAdmin() { 
+        document.getElementById('adminPage').classList.add('hidden'); 
+        document.getElementById('userPage').classList.remove('hidden'); 
+    }
+
     function toggleStaff() { document.getElementById('staffSection').classList.toggle('hidden'); }
 
     window.onload = () => {
@@ -143,23 +170,59 @@
 
     db.ref('/').on('value', s => { 
         const data = s.val() || {};
-        entries = data.walkin_data ? Object.values(data.walkin_data) : [];
+        rawData = data.walkin_data || {};
+        entries = Object.values(rawData);
         staff = data.staff || {};
         syncDropdown(); renderStaff(); updateUI();
     });
 
-    function syncDropdown() { document.getElementById('salesman').innerHTML = Object.values(staff).map(p => `<option value="${p.name}">${p.name}</option>`).join(''); }
-    function addStaff() { const n = document.getElementById('newName').value; if(n) db.ref('staff').push({name:n}), document.getElementById('newName').value=""; }
-    function renderStaff() { document.getElementById('staffList').innerHTML = Object.keys(staff).map(id => `<div style="display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid #eee;"><span>${staff[id].name}</span><button onclick="db.ref('staff/${id}').remove()" style="color:red; border:none; background:none;">✖</button></div>`).join(''); }
+    function syncDropdown() { 
+        document.getElementById('salesman').innerHTML = Object.values(staff)
+            .map(p => `<option value="${normalize(p.name)}">${normalize(p.name)}</option>`).join(''); 
+    }
+
+    function addStaff() { 
+        const n = normalize(document.getElementById('newName').value); 
+        if(n) {
+            const exists = Object.values(staff).some(s => normalize(s.name) === n);
+            if(exists) return alert("Staff already exists");
+            db.ref('staff').push({name:n}); 
+            document.getElementById('newName').value=""; 
+        }
+    }
+
+    function renderStaff() { 
+        document.getElementById('staffList').innerHTML = Object.keys(staff).map(id => 
+            `<div style="display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid #eee;">
+                <span>${normalize(staff[id].name)}</span>
+                <button onclick="db.ref('staff/${id}').remove()" style="color:red; border:none; background:none;">✖</button>
+            </div>`).join(''); 
+    }
 
     function addEntry() {
-        const s = document.getElementById('salesman').value, d = document.getElementById('entryDate').value;
-        if(!s) return alert("Add staff");
-        db.ref('walkin_data').push({ date: d, salesman: s, status: document.getElementById('status').value, month: new Date(d).getMonth(), year: new Date(d).getFullYear(), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) });
+        const s = document.getElementById('salesman').value;
+        const d = document.getElementById('entryDate').value;
+        if(!s) return alert("Add staff first");
+        
+        const dateObj = new Date(d);
+        db.ref('walkin_data').push({ 
+            date: d, 
+            salesman: normalize(s), 
+            status: document.getElementById('status').value, 
+            month: dateObj.getMonth(), 
+            year: dateObj.getFullYear(), 
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) 
+        });
+    }
+
+    function deleteEntry(key) {
+        if(confirm("Delete this entry forever?")) db.ref(`walkin_data/${key}`).remove();
     }
 
     function updateUI() {
-        const fM = parseInt(document.getElementById('filterMonth').value), fY = parseInt(document.getElementById('filterYear').value);
+        const fM = parseInt(document.getElementById('filterMonth').value);
+        const fY = parseInt(document.getElementById('filterYear').value);
+        
         const pData = entries.filter(e => parseInt(e.month) === fM && parseInt(e.year) === fY);
         const billed = pData.filter(e => e.status === 'Billed').length;
         const currentConv = pData.length ? (billed/pData.length*100) : 0;
@@ -169,6 +232,7 @@
         document.getElementById('totalMissed').innerText = pData.length - billed;
         document.getElementById('storeConvRate').innerText = currentConv.toFixed(1) + "%";
 
+        // Growth logic
         const lastYearData = entries.filter(e => parseInt(e.month) === fM && parseInt(e.year) === 2025);
         const lastYearConv = lastYearData.length ? (lastYearData.filter(e => e.status === 'Billed').length / lastYearData.length * 100) : 0;
         let growthText = "N/A", growthColor = "#6366f1";
@@ -180,38 +244,63 @@
         document.getElementById('convGrowth').innerText = growthText;
         document.getElementById('growthCard').style.background = growthColor;
 
+        // Stats with merged names
         const stats = {};
-        [...new Set(pData.map(e => e.salesman))].forEach(n => {
-            const d = pData.filter(e => e.salesman === n), b = d.filter(x => x.status === 'Billed').length;
-            stats[n] = { name:n, total:d.length, billed:b, conv:(b/d.length*100)||0, missed:((d.length-b)/d.length*100)||0 };
+        pData.forEach(e => {
+            const name = normalize(e.salesman);
+            if(!stats[name]) stats[name] = { name, total: 0, billed: 0 };
+            stats[name].total++;
+            if(e.status === 'Billed') stats[name].billed++;
         });
 
-        const sorted = Object.values(stats).sort((a,b) => b.conv - a.conv);
-        document.querySelector('#leaderboardTable tbody').innerHTML = sorted.map((s, i) => `<tr><td>${i+1}</td><td style="font-weight:700;">${s.name}</td><td>${s.total}</td><td>${s.billed}</td><td style="color:var(--success); font-weight:800;">${s.conv.toFixed(1)}%</td><td style="color:var(--danger); font-weight:800;">${s.missed.toFixed(1)}%</td></tr>`).join('');
+        const sorted = Object.values(stats).map(s => ({
+            ...s, conv: (s.billed/s.total*100)||0, missed: ((s.total-s.billed)/s.total*100)||0
+        })).sort((a,b) => b.conv - a.conv);
 
+        // Leaderboard
+        document.querySelector('#leaderboardTable tbody').innerHTML = sorted.map((s, i) => 
+            `<tr><td>${i+1}</td><td style="font-weight:700;">${s.name}</td><td>${s.total}</td><td>${s.billed}</td>
+            <td style="color:var(--success); font-weight:800;">${s.conv.toFixed(1)}%</td>
+            <td style="color:var(--danger); font-weight:800;">${s.missed.toFixed(1)}%</td></tr>`).join('');
+
+        // Monthly Summary Text
+        if(sorted.length > 0) {
+            document.getElementById('topPerformerText').innerText = `${sorted[0].name} (${sorted[0].conv.toFixed(1)}%)`;
+        } else {
+            document.getElementById('topPerformerText').innerText = "No data for this period";
+        }
+
+        // History Log (Current Day)
         const today = new Date().toISOString().split('T')[0];
-        document.querySelector('#userLogTable tbody').innerHTML = entries.filter(e => e.date === today).reverse().map(e => `<tr><td>${e.time}</td><td>${e.salesman}</td><td style="color:${e.status==='Billed'?'green':'red'}"><b>${e.status}</b></td></tr>`).join('');
+        const logHtml = Object.keys(rawData).filter(k => rawData[k].date === today).reverse().map(k => {
+            const e = rawData[k];
+            return `<tr><td>${e.time}</td><td>${normalize(e.salesman)}</td>
+            <td style="color:${e.status==='Billed'?'green':'red'}"><b>${e.status}</b></td>
+            <td><button class="del-btn" onclick="deleteEntry('${k}')">✕</button></td></tr>`;
+        }).join('');
+        document.querySelector('#userLogTable tbody').innerHTML = logHtml;
 
         if(!document.getElementById('adminPage').classList.contains('hidden')) renderCharts(pData, fM, sorted);
     }
 
     function renderCharts(pData, fM, sorted) {
-        // Podium
-        document.getElementById('rank1Area').innerHTML = ''; document.getElementById('rank23Area').innerHTML = '';
+        const r1 = document.getElementById('rank1Area');
+        const r23 = document.getElementById('rank23Area');
+        r1.innerHTML = ''; r23.innerHTML = '';
+
         sorted.slice(0, 3).forEach((s, i) => {
             const id = `podium-${i}`;
             const div = document.createElement('div'); div.className = `card rank-${i+1}`;
-            div.innerHTML = `<div class="rank-badge">${i+1}</div>${i===0?'<div style="position:absolute; top:-15px; right:15px; font-size:30px;">👑</div>':''}<div style="height:160px; position:relative;"><canvas id="${id}"></canvas><div style="position:absolute; top:55%; left:50%; transform:translate(-50%, -50%); text-align:center;"><div style="font-weight:900; font-size:14px;">${s.name.toUpperCase()}</div><div style="font-weight:900; color:var(--success); font-size:18px;">${s.conv.toFixed(0)}%</div></div></div>`;
-            if(i === 0) document.getElementById('rank1Area').appendChild(div); else document.getElementById('rank23Area').appendChild(div);
-            createDoughnut(id, [s.billed, s.total - s.billed], false);
+            div.innerHTML = `<div class="rank-badge">${i+1}</div>${i===0?'<div style="position:absolute; top:-15px; right:15px; font-size:30px;">👑</div>':''}<div style="height:160px; position:relative;"><canvas id="${id}"></canvas><div style="position:absolute; top:55%; left:50%; transform:translate(-50%, -50%); text-align:center;"><div style="font-weight:900; font-size:12px;">${s.name.toUpperCase()}</div><div style="font-weight:900; color:var(--success); font-size:16px;">${s.conv.toFixed(0)}%</div></div></div>`;
+            if(i === 0) r1.appendChild(div); else r23.appendChild(div);
+            setTimeout(() => createDoughnut(id, [s.billed, s.total - s.billed]), 50);
         });
 
-        // Trend Chart
+        // Other Charts (Standard line/bar)
         const days = [...new Set(pData.map(e => e.date.split('-')[2]))].sort();
         const dailyCount = days.map(d => pData.filter(e => e.date.split('-')[2] === d).length);
         createChart('trendChart', 'line', days, [{ label: 'Daily Walk-ins', data: dailyCount, borderColor: '#4f46e5', tension: 0.4, fill: true, backgroundColor: 'rgba(79, 70, 229, 0.1)' }], false);
 
-        // Monthly Conversion Trend (Numbers displayed)
         const conv25 = new Array(12).fill(0), conv26 = new Array(12).fill(0);
         for(let m=0; m<12; m++) {
             const d25 = entries.filter(e => e.month == m && e.year == 2025), d26 = entries.filter(e => e.month == m && e.year == 2026);
@@ -223,7 +312,7 @@
             { label: '2025 Conv %', data: conv25, borderColor: '#94a3b8', borderDash: [5,5], tension: 0.3 }
         ], true);
 
-        // Store Conversion Comparison (Doughnut)
+        // Doughnut Comp
         const d25 = entries.filter(e => e.month == fM && e.year == 2025), d26 = entries.filter(e => e.month == fM && e.year == 2026);
         const b25 = d25.filter(x => x.status==='Billed').length, b26 = d26.filter(x => x.status==='Billed').length;
         if (charts['storeCompChart']) charts['storeCompChart'].destroy();
@@ -236,7 +325,6 @@
             options: { maintainAspectRatio: false, plugins: { datalabels: { display: true, color: '#fff', formatter: (v, ctx) => v > 0 ? `${(v*100/ctx.dataset.data.reduce((a,b)=>a+b,0)).toFixed(0)}%` : '' } } }
         });
 
-        // Annual Traffic
         const a25 = new Array(12).fill(0), a26 = new Array(12).fill(0);
         entries.forEach(e => { if(e.year == 2025) a25[e.month]++; if(e.year == 2026) a26[e.month]++; });
         createChart('annualBarChart', 'bar', ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"], [{label:'2025', data:a25, backgroundColor:'#cbd5e1'}, {label:'2026', data:a26, backgroundColor:'#4f46e5'}], false);
@@ -245,30 +333,16 @@
     function createChart(id, type, labels, datasets, showLabels) {
         if (charts[id]) charts[id].destroy();
         charts[id] = new Chart(document.getElementById(id), { 
-            type, 
-            data: { labels, datasets }, 
-            options: { 
-                maintainAspectRatio:false, 
-                plugins:{
-                    datalabels:{
-                        display: showLabels,
-                        align: 'top',
-                        backgroundColor: '#fff',
-                        borderRadius: 4,
-                        font: { weight: 'bold', size: 10 },
-                        formatter: (v) => v > 0 ? v + '%' : ''
-                    }
-                },
-                layout: { padding: { top: 20 } }
-            } 
+            type, data: { labels, datasets }, 
+            options: { maintainAspectRatio:false, plugins:{ datalabels:{ display: showLabels, align: 'top', backgroundColor: '#fff', borderRadius: 4, font: { weight: 'bold', size: 10 }, formatter: (v) => v > 0 ? v + '%' : '' } }, layout: { padding: { top: 20 } } } 
         });
     }
 
-    function createDoughnut(id, data, labelsOn) {
+    function createDoughnut(id, data) {
         if (charts[id]) charts[id].destroy();
         charts[id] = new Chart(document.getElementById(id), { 
             type: 'doughnut', data: { datasets: [{ data, backgroundColor: ['#059669', '#ff3131'], cutout: '80%', borderWidth: 0 }] }, 
-            options: { maintainAspectRatio:false, plugins:{datalabels:{display:labelsOn}} } 
+            options: { maintainAspectRatio:false, plugins:{datalabels:{display:false}} } 
         });
     }
 
