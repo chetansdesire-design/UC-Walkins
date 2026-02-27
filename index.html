@@ -31,7 +31,7 @@
         th { text-align: left; color: #64748b; padding: 12px 5px; border-bottom: 2px solid #f1f5f9; font-weight: 800; }
         td { padding: 12px 5px; border-bottom: 1px solid #f8fafc; }
         select, input { background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 12px; font-weight: 800; width: 100%; margin-bottom: 10px; }
-        .del-btn { color: #cbd5e1; border: none; background: none; cursor: pointer; font-size: 16px; }
+        .del-btn { color: #cbd5e1; border: none; background: none; cursor: pointer; font-size: 16px; transition: color 0.2s; }
         .del-btn:hover { color: var(--danger); }
         @media print { .no-print { display: none !important; } }
     </style>
@@ -58,8 +58,16 @@
                 <select id="status"><option value="Billed">Billed</option><option value="Not Billed">Not Billed</option></select>
                 <button class="nav-btn" style="width:100%; height:50px; font-size:16px;" onclick="addEntry()">LOG ENTRY</button>
             </div>
+            
             <div class="card">
-                <h3>Today's History</h3>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                    <h3 style="margin:0;">Today's History</h3>
+                    <div id="userTodayStats" style="font-size:12px; font-weight:800; display:flex; gap:12px; background:#f8fafc; padding:8px 15px; border-radius:10px;">
+                        <span style="color:var(--primary)">TOTAL: <span id="uTodayW">0</span></span>
+                        <span style="color:var(--success)">BILLED: <span id="uTodayB">0</span></span>
+                        <span style="color:var(--danger)">MISSED: <span id="uTodayN">0</span></span>
+                    </div>
+                </div>
                 <table id="userLogTable"><thead><tr><th>Time</th><th>Salesman</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
             </div>
         </div>
@@ -78,11 +86,6 @@
                 <input type="text" id="newName" placeholder="Salesman Name">
                 <button class="nav-btn" onclick="addStaff()">ADD STAFF</button>
                 <div id="staffList" style="margin:15px 0;"></div>
-                <div style="display:flex; gap:10px;">
-                    <button class="nav-btn" style="background:#1e293b; flex:1;" onclick="backupData()">BACKUP</button>
-                    <button class="nav-btn" style="background:#f59e0b; flex:1;" onclick="document.getElementById('restoreFile').click()">RESTORE</button>
-                    <input type="file" id="restoreFile" class="hidden" onchange="restoreData(event)">
-                </div>
             </div>
 
             <div class="no-print" style="display:flex; gap:10px; margin-bottom:20px;">
@@ -95,10 +98,9 @@
                 <div class="stat-card" style="background: #059669;"><div>SALES</div><div id="totalBills" style="font-size:24px; font-weight:900;">0</div></div>
                 <div class="stat-card" style="background: #ff3131;"><div>MISSED</div><div id="totalMissed" style="font-size:24px; font-weight:900;">0</div></div>
                 <div class="stat-card" style="background: #1e293b;"><div>CONV %</div><div id="storeConvRate" style="font-size:24px; font-weight:900;">0%</div></div>
-                <div class="stat-card" id="growthCard" style="background: #6366f1;"><div>YOY GROWTH</div><div id="convGrowth" style="font-size:24px; font-weight:900;">0%</div></div>
             </div>
 
-            <div id="monthlySummary" class="card" style="text-align: center; border-left: 10px solid var(--primary);">
+            <div class="card" style="text-align: center; border-left: 10px solid var(--primary);">
                 <h3 style="margin:0">🏆 Performer of the Month</h3>
                 <div id="topPerformerText" style="font-size: 22px; font-weight: 900; color: var(--primary); margin-top:10px;">Calculating...</div>
             </div>
@@ -111,8 +113,8 @@
             <div class="card"><h3>Monthly Conversion Trend</h3><div style="height:350px;"><canvas id="conversionTrendChart"></canvas></div></div>
 
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:20px;">
-                <div class="card"><h3>Monthly Conv (Outer:2026 / Inner:2025)</h3><div style="height:300px;"><canvas id="storeCompChart"></canvas></div></div>
-                <div class="card"><h3>Annual Traffic</h3><div style="height:300px;"><canvas id="annualBarChart"></canvas></div></div>
+                <div class="card"><h3>Monthly Conv (2026 vs 2025)</h3><div style="height:300px;"><canvas id="storeCompChart"></canvas></div></div>
+                <div class="card"><h3>Annual Traffic Comparison</h3><div style="height:300px;"><canvas id="annualBarChart"></canvas></div></div>
             </div>
 
             <div class="card">
@@ -131,14 +133,14 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     Chart.register(ChartDataLabels);
+    
     let entries = []; let staff = {}; let charts = {}; let rawData = {};
 
-    // Helper: Normalize names (e.g., " john " -> "John")
-    const normalize = (name) => name.trim().charAt(0).toUpperCase() + name.trim().slice(1).toLowerCase();
+    const normalize = (name) => name ? name.trim().charAt(0).toUpperCase() + name.trim().slice(1).toLowerCase() : "Unknown";
 
     function checkAuth() { 
-        const pass = document.getElementById('mainPass').value;
-        if (pass === "user" || pass === "admin789") {
+        const p = document.getElementById('mainPass').value;
+        if (p === "user" || p === "admin789") {
             document.getElementById('authScreen').classList.add('hidden');
             document.getElementById('mainApp').classList.remove('hidden');
         } 
@@ -177,13 +179,13 @@
     });
 
     function syncDropdown() { 
-        document.getElementById('salesman').innerHTML = Object.values(staff)
-            .map(p => `<option value="${normalize(p.name)}">${normalize(p.name)}</option>`).join(''); 
+        const names = Object.values(staff).map(p => normalize(p.name));
+        document.getElementById('salesman').innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join(''); 
     }
 
     function addStaff() { 
         const n = normalize(document.getElementById('newName').value); 
-        if(n) {
+        if(n && n !== "Unknown") {
             const exists = Object.values(staff).some(s => normalize(s.name) === n);
             if(exists) return alert("Staff already exists");
             db.ref('staff').push({name:n}); 
@@ -202,26 +204,24 @@
     function addEntry() {
         const s = document.getElementById('salesman').value;
         const d = document.getElementById('entryDate').value;
-        if(!s) return alert("Add staff first");
+        if(!s) return alert("Please select a salesman");
         
         const dateObj = new Date(d);
         db.ref('walkin_data').push({ 
-            date: d, 
-            salesman: normalize(s), 
-            status: document.getElementById('status').value, 
-            month: dateObj.getMonth(), 
-            year: dateObj.getFullYear(), 
+            date: d, salesman: s, status: document.getElementById('status').value, 
+            month: dateObj.getMonth(), year: dateObj.getFullYear(), 
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) 
         });
     }
 
     function deleteEntry(key) {
-        if(confirm("Delete this entry forever?")) db.ref(`walkin_data/${key}`).remove();
+        if(confirm("Permanently delete this entry?")) db.ref(`walkin_data/${key}`).remove();
     }
 
     function updateUI() {
         const fM = parseInt(document.getElementById('filterMonth').value);
         const fY = parseInt(document.getElementById('filterYear').value);
+        const todayStr = new Date().toISOString().split('T')[0];
         
         const pData = entries.filter(e => parseInt(e.month) === fM && parseInt(e.year) === fY);
         const billed = pData.filter(e => e.status === 'Billed').length;
@@ -232,19 +232,6 @@
         document.getElementById('totalMissed').innerText = pData.length - billed;
         document.getElementById('storeConvRate').innerText = currentConv.toFixed(1) + "%";
 
-        // Growth logic
-        const lastYearData = entries.filter(e => parseInt(e.month) === fM && parseInt(e.year) === 2025);
-        const lastYearConv = lastYearData.length ? (lastYearData.filter(e => e.status === 'Billed').length / lastYearData.length * 100) : 0;
-        let growthText = "N/A", growthColor = "#6366f1";
-        if (lastYearConv > 0) {
-            const growth = currentConv - lastYearConv;
-            growthText = (growth > 0 ? "+" : "") + growth.toFixed(1) + "%";
-            growthColor = growth >= 0 ? "#059669" : "#ff3131";
-        }
-        document.getElementById('convGrowth').innerText = growthText;
-        document.getElementById('growthCard').style.background = growthColor;
-
-        // Stats with merged names
         const stats = {};
         pData.forEach(e => {
             const name = normalize(e.salesman);
@@ -257,28 +244,24 @@
             ...s, conv: (s.billed/s.total*100)||0, missed: ((s.total-s.billed)/s.total*100)||0
         })).sort((a,b) => b.conv - a.conv);
 
-        // Leaderboard
         document.querySelector('#leaderboardTable tbody').innerHTML = sorted.map((s, i) => 
             `<tr><td>${i+1}</td><td style="font-weight:700;">${s.name}</td><td>${s.total}</td><td>${s.billed}</td>
             <td style="color:var(--success); font-weight:800;">${s.conv.toFixed(1)}%</td>
             <td style="color:var(--danger); font-weight:800;">${s.missed.toFixed(1)}%</td></tr>`).join('');
+        document.getElementById('topPerformerText').innerText = sorted.length > 0 ? `${sorted[0].name} (${sorted[0].conv.toFixed(1)}%)` : "No Data";
 
-        // Monthly Summary Text
-        if(sorted.length > 0) {
-            document.getElementById('topPerformerText').innerText = `${sorted[0].name} (${sorted[0].conv.toFixed(1)}%)`;
-        } else {
-            document.getElementById('topPerformerText').innerText = "No data for this period";
-        }
+        const todayKeys = Object.keys(rawData).filter(k => rawData[k].date === todayStr);
+        const tBilled = todayKeys.filter(k => rawData[k].status === 'Billed').length;
+        document.getElementById('uTodayW').innerText = todayKeys.length;
+        document.getElementById('uTodayB').innerText = tBilled;
+        document.getElementById('uTodayN').innerText = todayKeys.length - tBilled;
 
-        // History Log (Current Day)
-        const today = new Date().toISOString().split('T')[0];
-        const logHtml = Object.keys(rawData).filter(k => rawData[k].date === today).reverse().map(k => {
+        document.querySelector('#userLogTable tbody').innerHTML = todayKeys.reverse().map(k => {
             const e = rawData[k];
             return `<tr><td>${e.time}</td><td>${normalize(e.salesman)}</td>
             <td style="color:${e.status==='Billed'?'green':'red'}"><b>${e.status}</b></td>
             <td><button class="del-btn" onclick="deleteEntry('${k}')">✕</button></td></tr>`;
         }).join('');
-        document.querySelector('#userLogTable tbody').innerHTML = logHtml;
 
         if(!document.getElementById('adminPage').classList.contains('hidden')) renderCharts(pData, fM, sorted);
     }
@@ -293,17 +276,18 @@
             const div = document.createElement('div'); div.className = `card rank-${i+1}`;
             div.innerHTML = `<div class="rank-badge">${i+1}</div>${i===0?'<div style="position:absolute; top:-15px; right:15px; font-size:30px;">👑</div>':''}<div style="height:160px; position:relative;"><canvas id="${id}"></canvas><div style="position:absolute; top:55%; left:50%; transform:translate(-50%, -50%); text-align:center;"><div style="font-weight:900; font-size:12px;">${s.name.toUpperCase()}</div><div style="font-weight:900; color:var(--success); font-size:16px;">${s.conv.toFixed(0)}%</div></div></div>`;
             if(i === 0) r1.appendChild(div); else r23.appendChild(div);
-            setTimeout(() => createDoughnut(id, [s.billed, s.total - s.billed]), 50);
+            setTimeout(() => createDoughnut(id, [s.billed, s.total - s.billed]), 100);
         });
 
-        // Other Charts (Standard line/bar)
         const days = [...new Set(pData.map(e => e.date.split('-')[2]))].sort();
         const dailyCount = days.map(d => pData.filter(e => e.date.split('-')[2] === d).length);
         createChart('trendChart', 'line', days, [{ label: 'Daily Walk-ins', data: dailyCount, borderColor: '#4f46e5', tension: 0.4, fill: true, backgroundColor: 'rgba(79, 70, 229, 0.1)' }], false);
 
+        // FIX: Monthly Conversion Trend
         const conv25 = new Array(12).fill(0), conv26 = new Array(12).fill(0);
         for(let m=0; m<12; m++) {
-            const d25 = entries.filter(e => e.month == m && e.year == 2025), d26 = entries.filter(e => e.month == m && e.year == 2026);
+            const d25 = entries.filter(e => e.month == m && e.year == 2025);
+            const d26 = entries.filter(e => e.month == m && e.year == 2026);
             conv25[m] = d25.length ? parseFloat((d25.filter(x => x.status === 'Billed').length / d25.length * 100).toFixed(1)) : 0;
             conv26[m] = d26.length ? parseFloat((d26.filter(x => x.status === 'Billed').length / d26.length * 100).toFixed(1)) : 0;
         }
@@ -312,17 +296,23 @@
             { label: '2025 Conv %', data: conv25, borderColor: '#94a3b8', borderDash: [5,5], tension: 0.3 }
         ], true);
 
-        // Doughnut Comp
-        const d25 = entries.filter(e => e.month == fM && e.year == 2025), d26 = entries.filter(e => e.month == fM && e.year == 2026);
-        const b25 = d25.filter(x => x.status==='Billed').length, b26 = d26.filter(x => x.status==='Billed').length;
+        // FIX: Monthly Conv Doughnut (Inner/Outer rings)
+        const cur25 = entries.filter(e => e.month == fM && e.year == 2025);
+        const cur26 = entries.filter(e => e.month == fM && e.year == 2026);
+        const b25 = cur25.filter(x => x.status === 'Billed').length;
+        const b26 = cur26.filter(x => x.status === 'Billed').length;
+
         if (charts['storeCompChart']) charts['storeCompChart'].destroy();
         charts['storeCompChart'] = new Chart(document.getElementById('storeCompChart'), {
             type: 'doughnut',
             data: { datasets: [
-                { label: '2026', data: [b26, d26.length-b26], backgroundColor: ['#059669', '#ff3131'], weight: 1.5 },
-                { label: '2025', data: [b25, d25.length-b25], backgroundColor: ['#10b981', '#ff5f6d'], weight: 1 }
+                { label: '2026', data: [b26, cur26.length-b26], backgroundColor: ['#4f46e5', '#ff3131'], weight: 1.5 },
+                { label: '2025', data: [b25, cur25.length-b25], backgroundColor: ['#cbd5e1', '#e2e8f0'], weight: 1 }
             ]},
-            options: { maintainAspectRatio: false, plugins: { datalabels: { display: true, color: '#fff', formatter: (v, ctx) => v > 0 ? `${(v*100/ctx.dataset.data.reduce((a,b)=>a+b,0)).toFixed(0)}%` : '' } } }
+            options: { maintainAspectRatio: false, plugins: { datalabels: { display: true, formatter: (v, ctx) => {
+                const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                return total > 0 ? ((v / total) * 100).toFixed(0) + "%" : "";
+            }}}}
         });
 
         const a25 = new Array(12).fill(0), a26 = new Array(12).fill(0);
@@ -334,7 +324,7 @@
         if (charts[id]) charts[id].destroy();
         charts[id] = new Chart(document.getElementById(id), { 
             type, data: { labels, datasets }, 
-            options: { maintainAspectRatio:false, plugins:{ datalabels:{ display: showLabels, align: 'top', backgroundColor: '#fff', borderRadius: 4, font: { weight: 'bold', size: 10 }, formatter: (v) => v > 0 ? v + '%' : '' } }, layout: { padding: { top: 20 } } } 
+            options: { maintainAspectRatio:false, plugins:{ datalabels:{ display: showLabels, formatter: (v) => v > 0 ? v + '%' : '' } } } 
         });
     }
 
@@ -344,20 +334,6 @@
             type: 'doughnut', data: { datasets: [{ data, backgroundColor: ['#059669', '#ff3131'], cutout: '80%', borderWidth: 0 }] }, 
             options: { maintainAspectRatio:false, plugins:{datalabels:{display:false}} } 
         });
-    }
-
-    function backupData() {
-        db.ref('/').once('value', s => {
-            const blob = new Blob([JSON.stringify(s.val())], {type: 'application/json'});
-            const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            a.download = `retail_backup_${new Date().toISOString().split('T')[0]}.json`; a.click();
-        });
-    }
-
-    function restoreData(e) {
-        const reader = new FileReader();
-        reader.onload = (ev) => { if(confirm("Replace all data?")) db.ref('/').set(JSON.parse(ev.target.result)); };
-        reader.readAsText(e.target.files[0]);
     }
 </script>
 </body>
