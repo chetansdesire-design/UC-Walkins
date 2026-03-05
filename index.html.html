@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Retail Pulse | Performance Dashboard</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    
+    <style>
+        :root { 
+            --primary: #4f46e5; --success: #059669; --danger: #ff3131; 
+            --dark: #0f172a; --white: #ffffff; --gold: #fbbf24;
+        }
+        * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: #f1f5f9; margin: 0; color: var(--dark); padding-bottom: 50px; }
+        .hidden { display: none !important; }
+        nav { background: var(--white); padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 100; }
+        .nav-btn { background: var(--primary); color: white; border: none; padding: 10px 18px; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 11px; }
+        .container { max-width: 1100px; margin: auto; padding: 20px; }
+        .card { background: var(--white); padding: 20px; border-radius: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px; position: relative; }
+        .rank-1 { border: 4px solid var(--gold) !important; background: #fffdf5 !important; max-width: 500px; margin: 0 auto 20px auto; }
+        .podium-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .rank-badge { position: absolute; top: 10px; left: 15px; font-size: 32px; font-weight: 900; opacity: 0.1; }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { padding: 20px; border-radius: 20px; color: white; text-align: center; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; color: #64748b; padding: 12px 5px; border-bottom: 2px solid #f1f5f9; font-weight: 800; }
+        td { padding: 12px 5px; border-bottom: 1px solid #f8fafc; }
+        select, input { background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 12px; font-weight: 800; width: 100%; margin-bottom: 10px; }
+        .del-btn { color: #cbd5e1; border: none; background: none; cursor: pointer; font-size: 16px; transition: color 0.2s; }
+        .del-btn:hover { color: var(--danger); }
+        @media print { .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+
+<div id="authScreen" style="position:fixed; inset:0; background:var(--dark); z-index:2000; display:flex; align-items:center; justify-content:center;">
+    <div style="background:white; padding:40px; border-radius:24px; text-align:center; width:90%; max-width:380px;">
+        <h2 style="color:var(--primary)">STORE TRACKER</h2>
+        <input type="password" id="mainPass" placeholder="Password" style="text-align:center;">
+        <button class="nav-btn" style="width:100%; height:45px;" onclick="checkAuth()">SIGN IN</button>
+    </div>
+</div>
+
+<div id="mainApp" class="hidden">
+    <nav><div style="font-weight:900; color:var(--primary)">RETAIL PULSE</div><button class="nav-btn" onclick="adminAccess()">ADMIN</button></nav>
+
+    <div class="container">
+        <div id="userPage">
+            <div class="card" style="max-width: 400px; margin: 0 auto 20px;">
+                <h3 style="text-align:center;">Daily Entry</h3>
+                <input type="date" id="entryDate">
+                <select id="salesman"></select>
+                <select id="status"><option value="Billed">Billed</option><option value="Not Billed">Not Billed</option></select>
+                <button class="nav-btn" style="width:100%; height:50px; font-size:16px;" onclick="addEntry()">LOG ENTRY</button>
+            </div>
+            
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                    <h3 id="historyTitle" style="margin:0;">Today's History</h3>
+                    <div id="userTodayStats" style="font-size:12px; font-weight:800; display:flex; gap:12px; background:#f8fafc; padding:8px 15px; border-radius:10px;">
+                        <span style="color:var(--primary)">TOTAL: <span id="uTodayW">0</span></span>
+                        <span style="color:var(--success)">BILLED: <span id="uTodayB">0</span></span>
+                        <span style="color:var(--danger)">MISSED: <span id="uTodayN">0</span></span>
+                    </div>
+                </div>
+                <table id="userLogTable"><thead><tr><th>Time</th><th>Salesman</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
+            </div>
+        </div>
+
+        <div id="adminPage" class="hidden">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;" class="no-print">
+                <h2>Executive Panel</h2>
+                <div style="display:flex; gap:8px;">
+                    <button class="nav-btn" style="background:var(--success)" onclick="window.print()">REPORT</button>
+                    <button class="nav-btn" style="background:#6366f1" onclick="toggleStaff()">SETTINGS</button>
+                    <button class="nav-btn" style="background:#64748b" onclick="logoutAdmin()">BACK</button>
+                </div>
+            </div>
+
+            <div id="staffSection" class="card hidden no-print">
+                <input type="text" id="newName" placeholder="Salesman Name">
+                <button class="nav-btn" onclick="addStaff()">ADD STAFF</button>
+                <div id="staffList" style="margin:15px 0;"></div>
+            </div>
+
+            <div class="no-print" style="display:flex; gap:10px; margin-bottom:20px;">
+                <select id="filterMonth" onchange="updateUI()"></select>
+                <select id="filterYear" onchange="updateUI()"></select>
+            </div>
+
+            <div class="stat-grid">
+                <div class="stat-card" style="background: #4f46e5;"><div>WALK-INS</div><div id="totalWalkins" style="font-size:24px; font-weight:900;">0</div></div>
+                <div class="stat-card" style="background: #059669;"><div>SALES</div><div id="totalBills" style="font-size:24px; font-weight:900;">0</div></div>
+                <div class="stat-card" style="background: #ff3131;"><div>MISSED</div><div id="totalMissed" style="font-size:24px; font-weight:900;">0</div></div>
+                <div class="stat-card" style="background: #1e293b;"><div>CONV %</div><div id="storeConvRate" style="font-size:24px; font-weight:900;">0%</div></div>
+            </div>
+
+            <div class="card" style="text-align: center; border-left: 10px solid var(--primary);">
+                <h3 style="margin:0">🏆 Performer of the Month</h3>
+                <div id="topPerformerText" style="font-size: 22px; font-weight: 900; color: var(--primary); margin-top:10px;">Calculating...</div>
+            </div>
+
+            <h3 style="text-align:center;">🎖️ Performance Podium</h3>
+            <div id="rank1Area"></div>
+            <div id="rank23Area" class="podium-grid"></div>
+
+            <div class="card"><h3>Daily Traffic Trend</h3><div style="height:250px;"><canvas id="trendChart"></canvas></div></div>
+            <div class="card"><h3>Monthly Conversion Trend</h3><div style="height:350px;"><canvas id="conversionTrendChart"></canvas></div></div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:20px;">
+                <div class="card"><h3>Monthly Conv (2026 vs 2025)</h3><div style="height:300px;"><canvas id="storeCompChart"></canvas></div></div>
+                <div class="card"><h3>Annual Traffic Comparison</h3><div style="height:300px;"><canvas id="annualBarChart"></canvas></div></div>
+            </div>
+
+            <div class="card">
+                <h3>Detailed Ranking</h3>
+                <table id="leaderboardTable">
+                    <thead><tr><th>Rank</th><th>Salesman</th><th>Walk-ins</th><th>Billed</th><th>Conv %</th><th>Missed %</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const firebaseConfig = { databaseURL: "https://daily-walkins-5fa02-default-rtdb.firebaseio.com/" };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    Chart.register(ChartDataLabels);
+    
+    let entries = []; let staff = {}; let charts = {}; let rawData = {};
+
+    const normalize = (name) => name ? name.trim().charAt(0).toUpperCase() + name.trim().slice(1).toLowerCase() : "Unknown";
+
+    function checkAuth() { 
+        const p = document.getElementById('mainPass').value;
+        if (p === "user" || p === "admin789") {
+            document.getElementById('authScreen').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+        } 
+    }
+
+    function adminAccess() { 
+        if (prompt("Admin Password:") === "admin789") {
+            document.getElementById('userPage').classList.add('hidden');
+            document.getElementById('adminPage').classList.remove('hidden');
+            updateUI();
+        } 
+    }
+
+    function logoutAdmin() { 
+        document.getElementById('adminPage').classList.add('hidden'); 
+        document.getElementById('userPage').classList.remove('hidden'); 
+    }
+
+    function toggleStaff() { document.getElementById('staffSection').classList.toggle('hidden'); }
+
+    window.onload = () => {
+        const ms = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        document.getElementById('filterMonth').innerHTML = ms.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
+        document.getElementById('filterYear').innerHTML = `<option value="2025">2025</option><option value="2026">2026</option>`;
+        
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('entryDate').value = today;
+        document.getElementById('filterMonth').value = new Date().getMonth();
+        document.getElementById('filterYear').value = 2026;
+
+        // FIXED: Refresh logic when date is changed manually in User View
+        document.getElementById('entryDate').addEventListener('change', updateUI);
+    };
+
+    db.ref('/').on('value', s => { 
+        const data = s.val() || {};
+        rawData = data.walkin_data || {};
+        entries = Object.values(rawData);
+        staff = data.staff || {};
+        syncDropdown(); renderStaff(); updateUI();
+    });
+
+    function syncDropdown() { 
+        const names = Object.values(staff).map(p => normalize(p.name));
+        document.getElementById('salesman').innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join(''); 
+    }
+
+    function addStaff() { 
+        const n = normalize(document.getElementById('newName').value); 
+        if(n && n !== "Unknown") {
+            const exists = Object.values(staff).some(s => normalize(s.name) === n);
+            if(exists) return alert("Staff already exists");
+            db.ref('staff').push({name:n}); 
+            document.getElementById('newName').value=""; 
+        }
+    }
+
+    function renderStaff() { 
+        document.getElementById('staffList').innerHTML = Object.keys(staff).map(id => 
+            `<div style="display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid #eee;">
+                <span>${normalize(staff[id].name)}</span>
+                <button onclick="db.ref('staff/${id}').remove()" style="color:red; border:none; background:none;">✖</button>
+            </div>`).join(''); 
+    }
+
+    function addEntry() {
+        const s = document.getElementById('salesman').value;
+        const d = document.getElementById('entryDate').value;
+        if(!s) return alert("Please select a salesman");
+        
+        const dateObj = new Date(d);
+        db.ref('walkin_data').push({ 
+            date: d, salesman: s, status: document.getElementById('status').value, 
+            month: dateObj.getMonth(), year: dateObj.getFullYear(), 
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) 
+        });
+    }
+
+    function deleteEntry(key) {
+        if(confirm("Permanently delete this entry?")) db.ref(`walkin_data/${key}`).remove();
+    }
+
+    function updateUI() {
+        const fM = parseInt(document.getElementById('filterMonth').value);
+        const fY = parseInt(document.getElementById('filterYear').value);
+        const selectedDate = document.getElementById('entryDate').value;
+        
+        // Admin Data (Calculated based on Admin Selectors)
+        const pData = entries.filter(e => parseInt(e.month) === fM && parseInt(e.year) === fY);
+        const billed = pData.filter(e => e.status === 'Billed').length;
+        const currentConv = pData.length ? (billed/pData.length*100) : 0;
+
+        document.getElementById('totalWalkins').innerText = pData.length;
+        document.getElementById('totalBills').innerText = billed;
+        document.getElementById('totalMissed').innerText = pData.length - billed;
+        document.getElementById('storeConvRate').innerText = currentConv.toFixed(1) + "%";
+
+        const stats = {};
+        pData.forEach(e => {
+            const name = normalize(e.salesman);
+            if(!stats[name]) stats[name] = { name, total: 0, billed: 0 };
+            stats[name].total++;
+            if(e.status === 'Billed') stats[name].billed++;
+        });
+
+        const sorted = Object.values(stats).map(s => ({
+            ...s, conv: (s.billed/s.total*100)||0, missed: ((s.total-s.billed)/s.total*100)||0
+        })).sort((a,b) => b.conv - a.conv);
+
+        document.querySelector('#leaderboardTable tbody').innerHTML = sorted.map((s, i) => 
+            `<tr><td>${i+1}</td><td style="font-weight:700;">${s.name}</td><td>${s.total}</td><td>${s.billed}</td>
+            <td style="color:var(--success); font-weight:800;">${s.conv.toFixed(1)}%</td>
+            <td style="color:var(--danger); font-weight:800;">${s.missed.toFixed(1)}%</td></tr>`).join('');
+        document.getElementById('topPerformerText').innerText = sorted.length > 0 ? `${sorted[0].name} (${sorted[0].conv.toFixed(1)}%)` : "No Data";
+
+        // FIXED: User History Log (Filtered by SELECTED DATE instead of TODAY only)
+        document.getElementById('historyTitle').innerText = `History for ${selectedDate}`;
+        const historyKeys = Object.keys(rawData).filter(k => rawData[k].date === selectedDate);
+        const hBilled = historyKeys.filter(k => rawData[k].status === 'Billed').length;
+        document.getElementById('uTodayW').innerText = historyKeys.length;
+        document.getElementById('uTodayB').innerText = hBilled;
+        document.getElementById('uTodayN').innerText = historyKeys.length - hBilled;
+
+        document.querySelector('#userLogTable tbody').innerHTML = historyKeys.reverse().map(k => {
+            const e = rawData[k];
+            return `<tr><td>${e.time}</td><td>${normalize(e.salesman)}</td>
+            <td style="color:${e.status==='Billed'?'green':'red'}"><b>${e.status}</b></td>
+            <td><button class="del-btn" onclick="deleteEntry('${k}')">✕</button></td></tr>`;
+        }).join('');
+
+        if(!document.getElementById('adminPage').classList.contains('hidden')) renderCharts(pData, fM, sorted);
+    }
+
+    function renderCharts(pData, fM, sorted) {
+        const r1 = document.getElementById('rank1Area');
+        const r23 = document.getElementById('rank23Area');
+        r1.innerHTML = ''; r23.innerHTML = '';
+
+        sorted.slice(0, 3).forEach((s, i) => {
+            const id = `podium-${i}`;
+            const div = document.createElement('div'); div.className = `card rank-${i+1}`;
+            div.innerHTML = `<div class="rank-badge">${i+1}</div>${i===0?'<div style="position:absolute; top:-15px; right:15px; font-size:30px;">👑</div>':''}<div style="height:160px; position:relative;"><canvas id="${id}"></canvas><div style="position:absolute; top:55%; left:50%; transform:translate(-50%, -50%); text-align:center;"><div style="font-weight:900; font-size:12px;">${s.name.toUpperCase()}</div><div style="font-weight:900; color:var(--success); font-size:16px;">${s.conv.toFixed(0)}%</div></div></div>`;
+            if(i === 0) r1.appendChild(div); else r23.appendChild(div);
+            setTimeout(() => createDoughnut(id, [s.billed, s.total - s.billed]), 100);
+        });
+
+        const days = [...new Set(pData.map(e => e.date.split('-')[2]))].sort();
+        const dailyCount = days.map(d => pData.filter(e => e.date.split('-')[2] === d).length);
+        createChart('trendChart', 'line', days, [{ label: 'Daily Walk-ins', data: dailyCount, borderColor: '#4f46e5', tension: 0.4, fill: true, backgroundColor: 'rgba(79, 70, 229, 0.1)' }], false);
+
+        // Monthly Conversion Trend (2025 vs 2026)
+        const conv25 = new Array(12).fill(0), conv26 = new Array(12).fill(0);
+        for(let m=0; m<12; m++) {
+            const d25 = entries.filter(e => e.month == m && e.year == 2025);
+            const d26 = entries.filter(e => e.month == m && e.year == 2026);
+            conv25[m] = d25.length ? parseFloat((d25.filter(x => x.status === 'Billed').length / d25.length * 100).toFixed(1)) : 0;
+            conv26[m] = d26.length ? parseFloat((d26.filter(x => x.status === 'Billed').length / d26.length * 100).toFixed(1)) : 0;
+        }
+        createChart('conversionTrendChart', 'line', ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"], [
+            { label: '2026 Conv %', data: conv26, borderColor: '#4f46e5', tension: 0.3, fill:true, backgroundColor:'rgba(79,70,229,0.05)' },
+            { label: '2025 Conv %', data: conv25, borderColor: '#94a3b8', borderDash: [5,5], tension: 0.3 }
+        ], true);
+
+        // Comparison Doughnuts (Inner/Outer)
+        const cur25 = entries.filter(e => e.month == fM && e.year == 2025);
+        const cur26 = entries.filter(e => e.month == fM && e.year == 2026);
+        const b25 = cur25.filter(x => x.status === 'Billed').length;
+        const b26 = cur26.filter(x => x.status === 'Billed').length;
+
+        if (charts['storeCompChart']) charts['storeCompChart'].destroy();
+        charts['storeCompChart'] = new Chart(document.getElementById('storeCompChart'), {
+            type: 'doughnut',
+            data: { datasets: [
+                { label: '2026', data: [b26, cur26.length-b26], backgroundColor: ['#4f46e5', '#ff3131'], weight: 1.5 },
+                { label: '2025', data: [b25, cur25.length-b25], backgroundColor: ['#cbd5e1', '#e2e8f0'], weight: 1 }
+            ]},
+            options: { maintainAspectRatio: false, plugins: { datalabels: { display: true, formatter: (v, ctx) => {
+                const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                return total > 0 ? ((v / total) * 100).toFixed(0) + "%" : "";
+            }}}}
+        });
+
+        const a25 = new Array(12).fill(0), a26 = new Array(12).fill(0);
+        entries.forEach(e => { if(e.year == 2025) a25[e.month]++; if(e.year == 2026) a26[e.month]++; });
+        createChart('annualBarChart', 'bar', ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"], [{label:'2025', data:a25, backgroundColor:'#cbd5e1'}, {label:'2026', data:a26, backgroundColor:'#4f46e5'}], false);
+    }
+
+    function createChart(id, type, labels, datasets, showLabels) {
+        if (charts[id]) charts[id].destroy();
+        charts[id] = new Chart(document.getElementById(id), { 
+            type, data: { labels, datasets }, 
+            options: { maintainAspectRatio:false, plugins:{ datalabels:{ display: showLabels, formatter: (v) => v > 0 ? v + '%' : '' } } } 
+        });
+    }
+
+    function createDoughnut(id, data) {
+        if (charts[id]) charts[id].destroy();
+        charts[id] = new Chart(document.getElementById(id), { 
+            type: 'doughnut', data: { datasets: [{ data, backgroundColor: ['#059669', '#ff3131'], cutout: '80%', borderWidth: 0 }] }, 
+            options: { maintainAspectRatio:false, plugins:{datalabels:{display:false}} } 
+        });
+    }
+</script>
+</body>
+</html>
