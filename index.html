@@ -109,13 +109,23 @@
                     </table>
                 </div>
             </div>
+
+            <!-- WhatsApp Report Button (User/Security Side) -->
+            <div style="max-width: 600px; margin: 0 auto 20px;">
+                <button class="nav-btn" style="width:100%; height:55px; font-size:18px; background:#25D366; font-weight:900;" onclick="sendWhatsAppReport()">
+                    SEND EOD REPORT
+                </button>
+            </div>
+            
         </div>
 
         <div id="adminPage" class="hidden">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;" class="no-print">
                 <h2>Executive Panel</h2>
                 <div style="display:flex; gap:8px;">
-                    <button class="nav-btn" style="background:var(--success)" onclick="window.print()">REPORT</button>
+                    <!-- ADMIN WHATSAPP MD REPORT BUTTON -->
+                    <button class="nav-btn" style="background:#25D366" onclick="sendAdminWhatsAppReport()">MD REPORT</button>
+                    <button class="nav-btn" style="background:var(--success)" onclick="window.print()">PRINT</button>
                     <button class="nav-btn" style="background:#6366f1" onclick="toggleStaff()">SETTINGS</button>
                     <button class="nav-btn" style="background:#64748b" onclick="logoutAdmin()">BACK</button>
                 </div>
@@ -203,17 +213,30 @@
 
     function checkAuth() { 
         const p = document.getElementById('mainPass').value;
-        // User password updated to 2026
-        if (p === "2026" || p === "admin789") {
+        
+        if (p === "2026") {
+            // Standard User Login
             document.getElementById('authScreen').classList.add('hidden');
             document.getElementById('mainApp').classList.remove('hidden');
+            document.getElementById('userPage').classList.remove('hidden');
+            document.getElementById('adminPage').classList.add('hidden');
+            
+        } else if (p === "1996") {
+            // Direct Admin Login
+            document.getElementById('authScreen').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+            document.getElementById('userPage').classList.add('hidden');
+            document.getElementById('adminPage').classList.remove('hidden');
+            
+            updateUI(); 
+            
         } else {
             alert("Incorrect Password");
         }
     }
 
     function adminAccess() { 
-        if (prompt("Admin Password:") === "admin789") {
+        if (prompt("Admin Password:") === "1996") {
             document.getElementById('userPage').classList.add('hidden'); 
             document.getElementById('adminPage').classList.remove('hidden');
             document.getElementById('adminPage').scrollIntoView({ behavior: 'smooth' });
@@ -486,7 +509,6 @@
             div.innerHTML = `<div class="rank-badge">${i+1}</div>${i===0?'<div style="position:absolute; top:-15px; right:15px; font-size:30px;">👑</div>':''}<div style="height:160px; position:relative;"><canvas id="${id}"></canvas><div style="position:absolute; top:55%; left:50%; transform:translate(-50%, -50%); text-align:center;"><div style="font-weight:900; font-size:12px;">${s.name.toUpperCase()}</div><div style="font-weight:900; color:var(--success); font-size:16px;">${s.conv.toFixed(0)}%</div></div></div>`;
             if(i === 0) r1.appendChild(div); else r23.appendChild(div);
             
-            // Execute cleanly immediately after adding to DOM
             setTimeout(() => createDoughnut(id, [s.billed, s.total - s.billed]), 10);
         });
 
@@ -511,7 +533,6 @@
         const b25 = cur25.filter(x => x.status === 'Billed').length;
         const b26 = cur26.filter(x => x.status === 'Billed').length;
 
-        // Use safe Chart.js native destruction
         let existingDoughnut = Chart.getChart('storeCompChart');
         if (existingDoughnut) existingDoughnut.destroy();
 
@@ -548,6 +569,145 @@
             type: 'doughnut', data: { datasets: [{ data, backgroundColor: ['#059669', '#ff3131'], cutout: '80%', borderWidth: 0 }] }, 
             options: { maintainAspectRatio:false, plugins:{datalabels:{display:false}} } 
         });
+    }
+
+    // USER/SECURITY END OF DAY REPORT
+    function sendWhatsAppReport() {
+        const selectedDate = document.getElementById('entryDate').value;
+        const targetDateObj = new Date(selectedDate);
+        const tMonth = targetDateObj.getMonth();
+        const tYear = targetDateObj.getFullYear();
+        
+        const todayKeys = Object.keys(rawData).filter(k => rawData[k].date === selectedDate);
+        
+        if (todayKeys.length === 0) {
+            alert("No entries found for today to send.");
+            return;
+        }
+
+        const mtdEntries = entries.filter(e => {
+            const eDateObj = new Date(e.date);
+            return e.month == tMonth && e.year == tYear && eDateObj <= targetDateObj;
+        });
+
+        const salesStats = {};
+
+        mtdEntries.forEach(e => {
+            const name = normalize(e.salesman);
+            if (!salesStats[name]) {
+                salesStats[name] = { 
+                    today: { billed: 0, missed: 0, total: 0 }, 
+                    mtd: { billed: 0, missed: 0, total: 0 } 
+                };
+            }
+            
+            salesStats[name].mtd.total++;
+            if (e.status === 'Billed') salesStats[name].mtd.billed++;
+            else salesStats[name].mtd.missed++;
+
+            if (e.date === selectedDate) {
+                salesStats[name].today.total++;
+                if (e.status === 'Billed') salesStats[name].today.billed++;
+                else salesStats[name].today.missed++;
+            }
+        });
+
+        // Determine Monthly Top Performer
+        let topPerformer = { name: "None", conv: -1, billed: 0 };
+        Object.keys(salesStats).forEach(name => {
+            const s = salesStats[name];
+            if (s.mtd.total > 0) {
+                const conv = (s.mtd.billed / s.mtd.total) * 100;
+                if (conv > topPerformer.conv || (conv === topPerformer.conv && s.mtd.billed > topPerformer.billed)) {
+                    topPerformer = { name, conv, billed: s.mtd.billed, total: s.mtd.total };
+                }
+            }
+        });
+
+        // Message Build without emojis
+        let msg = `*URBAN CASA*\n*Daily Sales Conversion Report*\n*Date:* ${selectedDate}\n\n`;
+        
+        msg += `*-- SALESMAN PERFORMANCE --*\n\n`;
+        
+        Object.keys(salesStats).forEach(name => {
+            const s = salesStats[name];
+            
+            if (s.mtd.total > 0) {
+                const tConvRate = s.today.total > 0 ? ((s.today.billed / s.today.total) * 100).toFixed(0) : 0;
+                const mtdConvRate = s.mtd.total > 0 ? ((s.mtd.billed / s.mtd.total) * 100).toFixed(0) : 0;
+                
+                msg += `*${name.toUpperCase()}*\n`;
+                msg += `> Today: ${s.today.billed} Billed / ${s.today.total} Walk-ins (${tConvRate}%)\n`;
+                msg += `> MTD: ${s.mtd.billed} Billed / ${s.mtd.total} Walk-ins (${mtdConvRate}%)\n\n`;
+            }
+        });
+
+        if (topPerformer.conv >= 0) {
+            msg += `*-- MONTHLY TOP PERFORMER --*\n`;
+            msg += `* ${topPerformer.name.toUpperCase()} (${topPerformer.conv.toFixed(0)}% Conversion)\n`;
+        }
+
+        const waLink = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+        window.open(waLink, '_blank');
+    }
+
+    // NEW MD EXECUTIVE REPORT (ADMIN PANEL) - MONTHLY FOCUS
+    function sendAdminWhatsAppReport() {
+        // Fetch values from the dropdowns so the report perfectly matches the dashboard view
+        const fM = parseInt(document.getElementById('filterMonth').value);
+        const fY = parseInt(document.getElementById('filterYear').value);
+        
+        const ms = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        const monthName = ms[fM];
+
+        // 1. Get all entries for the selected month
+        const monthEntries = entries.filter(e => parseInt(e.month) === fM && parseInt(e.year) === fY);
+        
+        if (monthEntries.length === 0) {
+            alert(`No entries found for ${monthName} ${fY} to send to MD.`);
+            return;
+        }
+
+        let mWalkins = monthEntries.length;
+        let mBilled = 0, mMissed = 0;
+        const salesStats = {};
+
+        monthEntries.forEach(e => {
+            if(e.status === 'Billed') mBilled++;
+            else mMissed++;
+            
+            const name = normalize(e.salesman);
+            if(!salesStats[name]) salesStats[name] = { billed: 0, total: 0 };
+            
+            salesStats[name].total++;
+            if(e.status === 'Billed') salesStats[name].billed++;
+        });
+
+        const mConv = mWalkins > 0 ? ((mBilled / mWalkins) * 100).toFixed(1) : 0;
+
+        // 2. Build Presentation String (No emojis)
+        let msg = `*URBAN CASA - EXECUTIVE REPORT*\n*Month:* ${monthName} ${fY}\n\n`;
+        
+        msg += `*-- STORE METRICS (TOTAL MONTH) --*\n`;
+        msg += `> Total Walk-ins: ${mWalkins}\n`;
+        msg += `> Total Billed: ${mBilled}\n`;
+        msg += `> Total Missed: ${mMissed}\n`;
+        msg += `> Conv Rate: ${mConv}%\n\n`;
+
+        msg += `*-- SALESMAN BREAKDOWN --*\n`;
+        
+        // Sort by conversion rate for the month
+        const sortedSales = Object.keys(salesStats).map(name => {
+            return { name, ...salesStats[name], conv: (salesStats[name].billed / salesStats[name].total) * 100 };
+        }).sort((a, b) => b.conv - a.conv);
+
+        sortedSales.forEach(s => {
+            msg += `* ${s.name}: ${s.billed}/${s.total} Billed (${s.conv.toFixed(0)}%)\n`;
+        });
+
+        // URL encode the message and open WhatsApp
+        const waLink = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+        window.open(waLink, '_blank');
     }
 </script>
 </body>
