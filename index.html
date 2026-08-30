@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>URBAN CASA | Performance Dashboard</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    
+    <style>
+        :root { 
+            --primary: #4f46e5; --success: #059669; --danger: #ff3131; 
+            --dark: #0f172a; --white: #ffffff; --gold: #fbbf24;
+        }
+        * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: #f1f5f9; margin: 0; color: var(--dark); padding-bottom: 50px; }
+        .hidden { display: none !important; }
+        nav { background: var(--white); padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 100; }
+        .nav-btn { background: var(--primary); color: white; border: none; padding: 10px 18px; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 11px; }
+        .container { max-width: 1100px; margin: auto; padding: 20px; }
+        .card { background: var(--white); padding: 20px; border-radius: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px; position: relative; }
+        .rank-1 { border: 4px solid var(--gold) !important; background: #fffdf5 !important; max-width: 500px; margin: 0 auto 20px auto; }
+        .podium-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .rank-badge { position: absolute; top: 10px; left: 15px; font-size: 32px; font-weight: 900; opacity: 0.1; }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { padding: 20px; border-radius: 20px; color: white; text-align: center; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; color: #64748b; padding: 12px 5px; border-bottom: 2px solid #f1f5f9; font-weight: 800; }
+        td { padding: 12px 5px; border-bottom: 1px solid #f8fafc; }
+        select, input { background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 12px; font-weight: 800; width: 100%; margin-bottom: 10px; }
+        .admin-scroll { max-height: 250px; overflow-y: auto; border: 1px solid #f1f5f9; border-radius: 12px; }
+
+        @keyframes flash { 0% { background: var(--danger); } 50% { background: #ff7b7b; } 100% { background: var(--danger); } }
+        @media print { .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+
+<!-- PAGER ALARM AUDIO & OVERLAY -->
+<audio id="pagerAudio" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" preload="auto"></audio>
+<div id="pageAlertOverlay" class="hidden" style="position:fixed; inset:0; background:var(--danger); z-index:9999; display:flex; align-items:center; justify-content:center; flex-direction:column; color:white; animation: flash 1s infinite;">
+    <h1 style="font-size: 40px; font-weight: 900; text-align: center;">🚨 CUSTOMER WAITING 🚨</h1>
+    <h2 id="pagedName" style="font-size: 60px; font-weight: 900; margin: 10px 0;">SALESMAN</h2>
+    <button onclick="dismissPage()" style="margin-top:30px; padding: 20px 40px; font-size: 24px; font-weight: 900; color: var(--danger); background: white; border: none; border-radius: 12px; cursor:pointer;">ACKNOWLEDGE</button>
+</div>
+
+<!-- AUTHENTICATION SCREEN -->
+<div id="authScreen" style="position:fixed; inset:0; background:var(--dark); z-index:2000; display:flex; align-items:center; justify-content:center;">
+    <div style="background:white; padding:40px; border-radius:24px; text-align:center; width:90%; max-width:380px;">
+        <h2 style="color:var(--primary)">URBAN CASA</h2>
+        <select id="loginRole" style="margin-bottom:10px;">
+            <option value="admin">Administrator</option>
+            <option value="security">Security (Ankit)</option>
+            <optgroup label="Sales Team" id="loginSalesTeam"></optgroup>
+        </select>
+        <input type="password" id="mainPass" placeholder="Password" style="text-align:center;">
+        <button class="nav-btn" style="width:100%; height:45px; margin-top:10px;" onclick="checkAuth()">SIGN IN</button>
+    </div>
+</div>
+
+<div id="mainApp" class="hidden">
+    <nav>
+        <div style="font-weight:900; color:var(--primary)">RETAIL PULSE</div>
+        <div style="display:flex; align-items:center; gap:15px;">
+            <span id="welcomeUser" style="font-size:13px; font-weight:800; color:#64748b;"></span>
+            <button class="nav-btn" style="background: #64748b;" onclick="logoutSystem()">LOGOUT</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- USER / SECURITY PANEL -->
+        <div id="userPage">
+            
+            <!-- SECURITY ONLY: FLOOR PAGER -->
+            <div class="card" id="pagerCard" style="max-width: 400px; margin: 0 auto 20px; border: 3px solid var(--primary); background: #f8fafc;">
+                <h3 style="text-align:center; margin-top:0; color: var(--primary);">🔊 Floor Pager</h3>
+                <select id="pageSalesmanSelect" style="height: 50px; font-size: 18px; text-align: center; margin-bottom: 15px;">
+                    <option value="">-- Select Who is Next --</option>
+                </select>
+                <button class="nav-btn" style="width:100%; height:60px; font-size:24px; background: var(--danger);" onclick="triggerPage()">RING SALESMAN</button>
+            </div>
+            
+            <!-- SECURITY ONLY: DAILY ENTRY -->
+            <div class="card" id="dailyEntryCard" style="max-width: 400px; margin: 0 auto 20px;">
+                <h3 style="text-align:center; margin-top:0;">Daily Entry</h3>
+                <div style="margin-bottom: 15px;">
+                    <label style="font-weight: 900; font-size: 11px; color: #64748b;">DATE</label>
+                    <input type="date" id="entryDate" style="height: 45px; font-size: 16px; margin-top: 5px;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="font-weight: 900; font-size: 11px; color: #64748b;">1. SELECT SALESMAN</label>
+                    <div id="salesmanGrid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;"></div>
+                    <input type="hidden" id="selectedSalesman">
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="font-weight: 900; font-size: 11px; color: #64748b;">2. SELECT STATUS</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;">
+                        <button id="btnBilled" onclick="selectStatus('Billed')" style="background: #f8fafc; color: var(--success); border: 2px solid #e2e8f0; padding: 15px; border-radius: 12px; font-weight: 900; font-size: 16px; cursor: pointer; transition: 0.2s;">✔️ BILLED</button>
+                        <button id="btnNotBilled" onclick="selectStatus('Not Billed')" style="background: #f8fafc; color: var(--danger); border: 2px solid #e2e8f0; padding: 15px; border-radius: 12px; font-weight: 900; font-size: 16px; cursor: pointer; transition: 0.2s;">❌ MISSED</button>
+                    </div>
+                    <input type="hidden" id="selectedStatus">
+                </div>
+                <button class="nav-btn" style="width:100%; height:60px; font-size:20px; font-weight: 900; background: var(--primary);" onclick="addEntry()">LOG ENTRY</button>
+            </div>
+            
+            <div class="card" style="max-width: 600px; margin: 0 auto 20px;">
+                <h3 style="margin-top:0;">Today's Salesman Summary</h3>
+                <table id="userSalesmanSummary">
+                    <thead><tr><th>Salesman</th><th>Billed</th><th>Not Billed</th><th>Total</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div class="card" id="userHistoryPanel" style="max-width: 600px; margin: 0 auto 20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                    <h3 id="historyTitle" style="margin:0;">Today's History</h3>
+                    <div id="userTodayStats" style="font-size:12px; font-weight:800; display:flex; gap:12px; background:#f8fafc; padding:8px 15px; border-radius:10px;">
+                        <span style="color:var(--primary)">TOTAL: <span id="uTodayW">0</span></span>
+                        <span style="color:var(--success)">BILLED: <span id="uTodayB">0</span></span>
+                        <span style="color:var(--danger)">MISSED: <span id="uTodayN">0</span></span>
+                    </div>
+                </div>
+                <div class="admin-scroll">
+                    <table id="userLogTable">
+                        <thead style="position:sticky; top:0; background:white;"><tr><th>Time</th><th>Salesman</th><th>Status</th><th>Action</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- WhatsApp Report Button -->
+            <div style="max-width: 600px; margin: 0 auto 20px;" id="waReportContainer">
+                <button class="nav-btn" style="width:100%; height:55px; font-size:18px; background:#25D366; font-weight:900;" onclick="sendWhatsAppReport()">
+                    SEND EOD REPORT
+                </button>
+            </div>
+        </div>
+
+        <!-- ADMIN PANEL -->
+        <div id="adminPage" class="hidden">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;" class="no-print">
+                <h2>Executive Panel</h2>
+                <div style="display:flex; gap:8px;">
+                    <button class="nav-btn" style="background:#25D366" onclick="sendAdminWhatsAppReport()">MD REPORT</button>
+                    <button class="nav-btn" style="background:var(--success)" onclick="window.print()">PRINT</button>
+                    <button class="nav-btn" style="background:#6366f1" onclick="toggleStaff()">SETTINGS</button>
+                </div>
+            </div>
+
+            <div id="staffSection" class="card hidden no-print" style="border: 2px solid var(--primary);">
+                <h3 style="color:var(--primary); margin-top:0;">Admin Control Center</h3>
+                
+                <div style="margin-bottom: 20px;">
+                    <p style="font-size:11px; font-weight:900; color:#64748b;">STAFF MANAGEMENT (CREATE ACCOUNTS)</p>
+                    <div style="display:flex; gap:10px; flex-wrap: wrap;">
+                        <input type="text" id="newName" placeholder="Enter New Salesman Name" style="margin:0; flex-grow:1;">
+                        <button class="nav-btn" onclick="addStaff()">CREATE</button>
+                        <button class="nav-btn" style="background:var(--gold); color:var(--dark);" onclick="autoCreateStaff()">AUTO-SYNC FROM DATA</button>
+                    </div>
+                    <div id="staffList" style="margin-top:15px; display:flex; flex-wrap:wrap; gap:10px;"></div>
+                </div>
+
+                <hr style="opacity:0.1; margin:20px 0;">
+
+                <div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <p style="font-size:11px; font-weight:900; color:var(--danger); margin:0;">DATA MANAGEMENT (EDIT / DELETE)</p>
+                        <input type="date" id="adminDataDate" style="width:150px; margin:0; padding:5px; font-size:12px;" onchange="updateUI()">
+                    </div>
+                    <div class="admin-scroll">
+                        <table id="adminDeleteTable">
+                            <thead style="position:sticky; top:0; background:#f8fafc;">
+                                <tr><th>Time</th><th>Salesman</th><th>Status</th><th>Action</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="no-print" style="display:flex; gap:10px; margin-bottom:20px;">
+                <select id="filterMonth" onchange="updateUI()"></select>
+                <select id="filterYear" onchange="updateUI()"></select>
+            </div>
+
+            <div class="stat-grid">
+                <div class="stat-card" style="background: #4f46e5;"><div>WALK-INS</div><div id="totalWalkins" style="font-size:24px; font-weight:900;">0</div></div>
+                <div class="stat-card" style="background: #059669;"><div>SALES</div><div id="totalBills" style="font-size:24px; font-weight:900;">0</div></div>
+                <div class="stat-card" style="background: #ff3131;"><div>MISSED</div><div id="totalMissed" style="font-size:24px; font-weight:900;">0</div></div>
+                <div class="stat-card" style="background: #1e293b;"><div>CONV %</div><div id="storeConvRate" style="font-size:24px; font-weight:900;">0%</div></div>
+            </div>
+
+            <div class="card" style="text-align: center; border-left: 10px solid var(--primary);">
+                <h3 style="margin:0">🏆 Performer of the Month</h3>
+                <div id="topPerformerText" style="font-size: 22px; font-weight: 900; color: var(--primary); margin-top:10px;">Calculating...</div>
+            </div>
+
+            <h3 style="text-align:center;">🎖️ Performance Podium</h3>
+            <div id="rank1Area"></div>
+            <div id="rank23Area" class="podium-grid"></div>
+
+            <div class="card"><h3>Daily Traffic Trend</h3><div style="height:250px;"><canvas id="trendChart"></canvas></div></div>
+            <div class="card"><h3>Monthly Conversion Trend</h3><div style="height:350px;"><canvas id="conversionTrendChart"></canvas></div></div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:20px;">
+                <div class="card"><h3>Monthly Conv (2026 vs 2025)</h3><div style="height:300px;"><canvas id="storeCompChart"></canvas></div></div>
+                <div class="card"><h3>Annual Traffic Comparison</h3><div style="height:300px;"><canvas id="annualBarChart"></canvas></div></div>
+            </div>
+
+            <div class="card">
+                <h3>Detailed Ranking</h3>
+                <table id="leaderboardTable">
+                    <thead><tr><th>Rank</th><th>Salesman</th><th>Walk-ins</th><th>Billed</th><th>Conv %</th><th>Missed %</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // FIREBASE SETUP
+    const firebaseConfig = { databaseURL: "https://daily-walkins-5fa02-default-rtdb.firebaseio.com/" };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    Chart.register(ChartDataLabels);
+    
+    let entries = []; let staff = {}; let rawData = {};
+    const normalize = (name) => name ? name.trim().charAt(0).toUpperCase() + name.trim().slice(1).toLowerCase() : "Unknown";
+
+    // AUTHENTICATION & SESSION LOGIC
+    function checkAuth() { 
+        const role = document.getElementById('loginRole').value;
+        const p = document.getElementById('mainPass').value;
+        
+        if (role === "admin" && p === "1996") {
+            setSession("admin", "Admin");
+        } else if (role === "security" && p === "2026") {
+            setSession("security", "Security");
+        } else if (role.startsWith("sales_")) {
+            const salesName = role.split('_')[1];
+            const sData = Object.values(staff).find(x => normalize(x.name) === salesName);
+            if (sData && sData.pass === p) {
+                setSession("sales", salesName);
+            } else {
+                alert("Incorrect Password for " + salesName);
+            }
+        } else {
+            alert("Invalid Login");
+        }
+    }
+
+    function setSession(role, name) {
+        localStorage.setItem('uc_role', role);
+        localStorage.setItem('uc_name', name);
+        applySession();
+    }
+
+    function applySession() {
+        const role = localStorage.getItem('uc_role');
+        const name = localStorage.getItem('uc_name');
+        
+        if (!role) {
+            document.getElementById('authScreen').classList.remove('hidden');
+            document.getElementById('mainApp').classList.add('hidden');
+            return;
+        }
+        
+        document.getElementById('authScreen').classList.add('hidden');
+        document.getElementById('mainApp').classList.remove('hidden');
+        document.getElementById('welcomeUser').innerText = "Hi, " + name;
+
+        if (role === 'admin') {
+            document.getElementById('userPage').classList.add('hidden');
+            document.getElementById('adminPage').classList.remove('hidden');
+            updateUI();
+        } else {
+            document.getElementById('userPage').classList.remove('hidden');
+            document.getElementById('adminPage').classList.add('hidden');
+            
+            // Route Security vs Sales Views
+            if (role === 'sales') {
+                document.getElementById('dailyEntryCard').classList.add('hidden');
+                document.getElementById('pagerCard').classList.add('hidden');
+                document.getElementById('waReportContainer').classList.add('hidden');
+            } else {
+                document.getElementById('dailyEntryCard').classList.remove('hidden');
+                document.getElementById('pagerCard').classList.remove('hidden');
+                document.getElementById('waReportContainer').classList.remove('hidden');
+            }
+        }
+    }
+
+    function logoutSystem() {
+        localStorage.removeItem('uc_role');
+        localStorage.removeItem('uc_name');
+        document.getElementById('mainPass').value = '';
+        applySession();
+    }
+
+    // INITIALIZATION
+    window.addEventListener('load', () => {
+        const ms = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        document.getElementById('filterMonth').innerHTML = ms.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
+        
+        // Dynamic Year Dropdown
+        const currentYear = new Date().getFullYear();
+        document.getElementById('filterYear').innerHTML = `<option value="2025">2025</option><option value="${currentYear}">${currentYear}</option>`;
+        
+        const today = new Date().toISOString().split('T')[0];
+        const dateInput = document.getElementById('entryDate');
+        dateInput.value = today; dateInput.max = today; 
+        
+        document.getElementById('adminDataDate').value = today; 
+        document.getElementById('filterMonth').value = new Date().getMonth();
+        document.getElementById('filterYear').value = currentYear;
+        
+        document.getElementById('entryDate').addEventListener('change', updateUI);
+        
+        applySession(); // Route user on load
+    });
+
+    // CORE DATABASE LISTENER
+    db.ref('/').on('value', s => { 
+        const data = s.val() || {};
+        rawData = data.walkin_data || {};
+        entries = Object.values(rawData);
+        staff = data.staff || {};
+        
+        syncLoginDropdown();
+        syncDropdown(); 
+        renderStaff(); 
+        updateUI();
+    });
+
+    function syncLoginDropdown() {
+        const team = document.getElementById('loginSalesTeam');
+        if(team) {
+            team.innerHTML = Object.values(staff).map(p => 
+                `<option value="sales_${normalize(p.name)}">${normalize(p.name)}</option>`
+            ).join('');
+        }
+    }
+
+    // PAGER ALARM LOGIC
+    function triggerPage() {
+        const s = document.getElementById('pageSalesmanSelect').value;
+        if(!s) return alert("Select a salesman to page!");
+        
+        db.ref('active_page').set({ salesman: s, timestamp: Date.now() });
+        document.getElementById('pageSalesmanSelect').value = ''; 
+    }
+
+    function dismissPage() {
+        document.getElementById('pageAlertOverlay').classList.add('hidden');
+        document.getElementById('pagerAudio').pause();
+    }
+
+    db.ref('active_page').on('value', snap => {
+        const data = snap.val();
+        if(data && data.timestamp > Date.now() - 15000) {
+            const loggedUser = localStorage.getItem('uc_name');
+            // Ring ONLY if the logged in user matches the paged user
+            if (loggedUser === data.salesman) {
+                document.getElementById('pagedName').innerText = data.salesman.toUpperCase();
+                document.getElementById('pageAlertOverlay').classList.remove('hidden');
+                
+                const audio = document.getElementById('pagerAudio');
+                audio.currentTime = 0; 
+                audio.play().catch(e => console.log("Audio blocked until interaction."));
+            }
+        }
+    });
+
+    // STAFF MANAGEMENT
+    function toggleStaff() { document.getElementById('staffSection').classList.toggle('hidden'); }
+
+    function addStaff() { 
+        const n = normalize(document.getElementById('newName').value); 
+        if(n && n !== "Unknown") {
+            const autoPass = Math.floor(1000 + Math.random() * 9000).toString();
+            db.ref('staff').push({name: n, pass: autoPass}); 
+            document.getElementById('newName').value = ""; 
+            alert(`✅ Created account for ${n}. Password is: ${autoPass}`);
+        } else {
+            alert("Please enter a valid Name");
+        }
+    }
+
+    function autoCreateStaff() {
+        const existingNames = Object.values(staff).map(s => normalize(s.name));
+        const dataNames = [...new Set(entries.map(e => normalize(e.salesman)))].filter(n => n && n !== "Unknown");
+        let addedCount = 0;
+        
+        dataNames.forEach(name => {
+            if (!existingNames.includes(name)) {
+                const autoPass = Math.floor(1000 + Math.random() * 9000).toString();
+                db.ref('staff').push({name: name, pass: autoPass});
+                addedCount++;
+            }
+        });
+        
+        if (addedCount > 0) {
+            alert(`✅ Auto-created ${addedCount} missing staff accounts from past data! Check the list below for their passwords.`);
+        } else {
+            alert("✔️ All staff from your historical data already have accounts.");
+        }
+    }
+
+    function renderStaff() { 
+        document.getElementById('staffList').innerHTML = Object.keys(staff).map(id => 
+            `<div style="background:#f1f5f9; padding:5px 10px; border-radius:8px; font-size:12px; display:flex; align-items:center; gap:8px;">
+                <b>${normalize(staff[id].name)}</b> (Pass: ${staff[id].pass || 'none'})
+                <span onclick="db.ref('staff/${id}').remove()" style="color:red; cursor:pointer; font-weight:bold;">✕</span>
+            </div>`
+        ).join(''); 
+    }
+
+    function syncDropdown() { 
+        const currentSelected = document.getElementById('selectedSalesman')?.value || '';
+        const names = Object.values(staff).map(p => normalize(p.name));
+        const grid = document.getElementById('salesmanGrid');
+        
+        if (names.length === 0) {
+            grid.innerHTML = '<div style="color:var(--danger); font-weight:bold; font-size:12px; grid-column: span 2; text-align:center;">No Staff Added!</div>';
+            return;
+        }
+
+        grid.innerHTML = names.map(n => {
+            const cleanId = n.replace(/[\s\.]+/g, '');
+            const isActive = currentSelected === n;
+            return `
+            <button class="salesman-btn" id="sales-${cleanId}" onclick="selectSalesman('${n}')" 
+            style="background: ${isActive ? 'var(--primary)' : '#f8fafc'}; color: ${isActive ? 'white' : 'var(--dark)'}; border: 2px solid ${isActive ? 'var(--primary)' : '#e2e8f0'}; padding: 12px; border-radius: 12px; font-weight: 800; font-size: 14px; cursor: pointer; transition: 0.2s;">
+            ${n}
+            </button>
+        `}).join(''); 
+
+        // Also sync Pager dropdown
+        document.getElementById('pageSalesmanSelect').innerHTML = '<option value="">-- Select Who is Next --</option>' + 
+            names.map(n => `<option value="${n}">${n}</option>`).join('');
+    }
+
+    function selectSalesman(name) {
+        document.getElementById('selectedSalesman').value = name;
+        document.querySelectorAll('.salesman-btn').forEach(btn => {
+            btn.style.background = '#f8fafc'; btn.style.borderColor = '#e2e8f0'; btn.style.color = 'var(--dark)';
+        });
+        const activeBtn = document.getElementById(`sales-${name.replace(/[\s\.]+/g, '')}`);
+        if(activeBtn) {
+            activeBtn.style.background = 'var(--primary)'; activeBtn.style.borderColor = 'var(--primary)'; activeBtn.style.color = 'white';
+        }
+    }
+
+    function selectStatus(status) {
+        document.getElementById('selectedStatus').value = status;
+        const btnB = document.getElementById('btnBilled');
+        const btnN = document.getElementById('btnNotBilled');
+        
+        btnB.style.background = '#f8fafc'; btnB.style.borderColor = '#e2e8f0'; btnB.style.color = 'var(--success)';
+        btnN.style.background = '#f8fafc'; btnN.style.borderColor = '#e2e8f0'; btnN.style.color = 'var(--danger)';
+
+        if(status === 'Billed') {
+            btnB.style.background = 'var(--success)'; btnB.style.borderColor = 'var(--success)'; btnB.style.color = 'white';
+        } else if (status === 'Not Billed') {
+            btnN.style.background = 'var(--danger)'; btnN.style.borderColor = 'var(--danger)'; btnN.style.color = 'white';
+        }
+    }
+
+    function addEntry() {
+        const s = document.getElementById('selectedSalesman').value;
+        const status = document.getElementById('selectedStatus').value;
+        const d = document.getElementById('entryDate').value;
+        
+        if(!s) return alert("⚠️ Please select a Salesman!");
+        if(!status) return alert("⚠️ Please select Billed or Missed!");
+        
+        const dateObj = new Date(d);
+        db.ref('walkin_data').push({ 
+            date: d, salesman: s, status: status, 
+            month: dateObj.getMonth(), year: dateObj.getFullYear(), 
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) 
+        });
+
+        document.getElementById('selectedSalesman').value = '';
+        document.getElementById('selectedStatus').value = '';
+        syncDropdown(); selectStatus(''); 
+    }
+
+    function deleteEntry(key) {
+        if(confirm("Are you sure you want to delete this entry?")) db.ref(`walkin_data/${key}`).remove();
+    }
+
+    function startEdit(key) {
+        const e = rawData[key];
+        const row = document.getElementById(`row-${key}`);
+        const names = Object.values(staff).map(p => normalize(p.name));
+        const salesOptions = names.map(n => `<option value="${n}" ${n === normalize(e.salesman) ? 'selected' : ''}>${n}</option>`).join('');
+        const statusOptions = `<option value="Billed" ${e.status === 'Billed' ? 'selected' : ''}>Billed</option><option value="Not Billed" ${e.status === 'Not Billed' ? 'selected' : ''}>Not Billed</option>`;
+
+        row.innerHTML = `
+            <td>${e.time}</td>
+            <td><select id="edit-salesman-${key}" style="margin:0; padding:4px; font-size:12px;">${salesOptions}</select></td>
+            <td><select id="edit-status-${key}" style="margin:0; padding:4px; font-size:12px;">${statusOptions}</select></td>
+            <td style="display:flex; gap:10px;">
+                <button onclick="saveEdit('${key}')" style="color:var(--success); border:none; background:none; cursor:pointer; font-weight:900;">SAVE</button>
+                <button onclick="updateUI()" style="color:#64748b; border:none; background:none; cursor:pointer; font-weight:900;">CANCEL</button>
+            </td>
+        `;
+    }
+
+    function saveEdit(key) {
+        const newSalesman = document.getElementById(`edit-salesman-${key}`).value;
+        const newStatus = document.getElementById(`edit-status-${key}`).value;
+        db.ref(`walkin_data/${key}`).update({ salesman: newSalesman, status: newStatus });
+    }
+
+    // UI UPDATE & CHART LOGIC
+    function updateUI() {
+        const fM = parseInt(document.getElementById('filterMonth').value);
+        const fY = parseInt(document.getElementById('filterYear').value);
+        const selectedDate = document.getElementById('entryDate').value;
+        const adminDate = document.getElementById('adminDataDate').value;
+        const actualToday = new Date().toISOString().split('T')[0];
+        
+        const pData = entries.filter(e => parseInt(e.month) === fM && parseInt(e.year) === fY);
+        const billed = pData.filter(e => e.status === 'Billed').length;
+        
+        document.getElementById('totalWalkins').innerText = pData.length;
+        document.getElementById('totalBills').innerText = billed;
+        document.getElementById('totalMissed').innerText = pData.length - billed;
+        document.getElementById('storeConvRate').innerText = (pData.length ? (billed/pData.length*100).toFixed(1) : "0.0") + "%";
+
+        const stats = {};
+        pData.forEach(e => {
+            const name = normalize(e.salesman);
+            if(!stats[name]) stats[name] = { name, total: 0, billed: 0 };
+            stats[name].total++;
+            if(e.status === 'Billed') stats[name].billed++;
+        });
+
+        const sorted = Object.values(stats).map(s => ({
+            ...s, conv: (s.total ? (s.billed/s.total*100) : 0), missed: (s.total ? ((s.total-s.billed)/s.total*100) : 0)
+        })).sort((a,b) => b.conv - a.conv);
+
+        document.querySelector('#leaderboardTable tbody').innerHTML = sorted.map((s, i) => 
+            `<tr><td>${i+1}</td><td style="font-weight:700;">${s.name}</td><td>${s.total}</td><td>${s.billed}</td>
+            <td style="color:var(--success); font-weight:800;">${s.conv.toFixed(1)}%</td>
+            <td style="color:var(--danger); font-weight:800;">${s.missed.toFixed(1)}%</td></tr>`).join('');
+        
+        document.getElementById('topPerformerText').innerText = sorted.length > 0 ? `${sorted[0].name} (${sorted[0].conv.toFixed(1)}%)` : "No Data";
+
+        document.getElementById('historyTitle').innerText = `History for ${selectedDate}`;
+        const historyKeys = Object.keys(rawData).filter(k => rawData[k].date === selectedDate);
+        const hBilled = historyKeys.filter(k => rawData[k].status === 'Billed').length;
+        document.getElementById('uTodayW').innerText = historyKeys.length;
+        document.getElementById('uTodayB').innerText = hBilled;
+        document.getElementById('uTodayN').innerText = historyKeys.length - hBilled;
+
+        const todayStats = {};
+        historyKeys.forEach(k => {
+            const e = rawData[k];
+            const name = normalize(e.salesman);
+            if(!todayStats[name]) todayStats[name] = { billed: 0, notBilled: 0, total: 0 };
+            todayStats[name].total++;
+            if(e.status === 'Billed') todayStats[name].billed++;
+            else todayStats[name].notBilled++;
+        });
+
+        document.querySelector('#userSalesmanSummary tbody').innerHTML = Object.keys(todayStats).map(name => {
+            const s = todayStats[name];
+            return `<tr>
+                <td style="font-weight:700;">${name}</td>
+                <td style="color:var(--success); font-weight:800;">${s.billed}</td>
+                <td style="color:var(--danger); font-weight:800;">${s.notBilled}</td>
+                <td style="font-weight:700;">${s.total}</td>
+            </tr>`;
+        }).join('');
+
+        document.querySelector('#userLogTable tbody').innerHTML = historyKeys.slice().reverse().map(k => {
+            const e = rawData[k];
+            const isToday = selectedDate === actualToday;
+            const actionHtml = isToday 
+                ? `<button onclick="deleteEntry('${k}')" style="color:var(--danger); border:none; background:none; cursor:pointer; font-weight:900; font-size:16px; padding:0;">✕</button>`
+                : `<span style="background:#e2e8f0; color:#64748b; font-size:10px; font-weight:bold; padding:4px 8px; border-radius:6px;">LOCKED</span>`;
+
+            return `<tr><td>${e.time}</td><td>${normalize(e.salesman)}</td><td style="color:${e.status==='Billed'?'var(--success)':'var(--danger)'}"><b>${e.status}</b></td><td>${actionHtml}</td></tr>`;
+        }).join('');
+
+        const adminHistoryKeys = Object.keys(rawData).filter(k => rawData[k].date === adminDate);
+        document.querySelector('#adminDeleteTable tbody').innerHTML = adminHistoryKeys.slice().reverse().map(k => {
+            const e = rawData[k];
+            return `<tr id="row-${k}">
+                <td>${e.time}</td>
+                <td>${normalize(e.salesman)}</td>
+                <td style="color:${e.status==='Billed'?'var(--success)':'var(--danger)'}"><b>${e.status}</b></td>
+                <td style="display:flex; gap:10px;">
+                    <button onclick="startEdit('${k}')" style="color:var(--primary); border:none; background:none; cursor:pointer; font-weight:900;">EDIT</button>
+                    <button onclick="deleteEntry('${k}')" style="color:var(--danger); border:none; background:none; cursor:pointer; font-weight:900;">DELETE</button>
+                </td>
+            </tr>`;
+        }).join('');
+
+        if(!document.getElementById('adminPage').classList.contains('hidden')) renderCharts(pData, fM, sorted);
+    }
+
+    function renderCharts(pData, fM, sorted) {
+        const r1 = document.getElementById('rank1Area');
+        const r23 = document.getElementById('rank23Area');
+        r1.innerHTML = ''; r23.innerHTML = '';
+
+        sorted.slice(0, 3).forEach((s, i) => {
+            const id = `podium-${i}`;
+            const div = document.createElement('div'); div.className = `card rank-${i+1}`;
+            div.innerHTML = `<div class="rank-badge">${i+1}</div>${i===0?'<div style="position:absolute; top:-15px; right:15px; font-size:30px;">👑</div>':''}<div style="height:160px; position:relative;"><canvas id="${id}"></canvas><div style="position:absolute; top:55%; left:50%; transform:translate(-50%, -50%); text-align:center;"><div style="font-weight:900; font-size:12px;">${s.name.toUpperCase()}</div><div style="font-weight:900; color:var(--success); font-size:16px;">${s.conv.toFixed(0)}%</div></div></div>`;
+            if(i === 0) r1.appendChild(div); else r23.appendChild(div);
+            setTimeout(() => createDoughnut(id, [s.billed, s.total - s.billed]), 10);
+        });
+
+        const days = [...new Set(pData.map(e => e.date.split('-')[2]))].sort();
+        const dailyCount = days.map(d => pData.filter(e => e.date.split('-')[2] === d).length);
+        createChart('trendChart', 'line', days, [{ label: 'Daily Walk-ins', data: dailyCount, borderColor: '#4f46e5', tension: 0.4, fill: true, backgroundColor: 'rgba(79, 70, 229, 0.1)' }], false);
+
+        const conv25 = new Array(12).fill(0), conv26 = new Array(12).fill(0);
+        for(let m=0; m<12; m++) {
+            const d25 = entries.filter(e => e.month == m && e.year == 2025);
+            const d26 = entries.filter(e => e.month == m && e.year == 2026);
+            conv25[m] = d25.length ? parseFloat((d25.filter(x => x.status === 'Billed').length / d25.length * 100).toFixed(1)) : 0;
+            conv26[m] = d26.length ? parseFloat((d26.filter(x => x.status === 'Billed').length / d26.length * 100).toFixed(1)) : 0;
+        }
+        createChart('conversionTrendChart', 'line', ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"], [
+            { label: '2026 Conv %', data: conv26, borderColor: '#4f46e5', tension: 0.3, fill:true, backgroundColor:'rgba(79,70,229,0.05)' },
+            { label: '2025 Conv %', data: conv25, borderColor: '#94a3b8', borderDash: [5,5], tension: 0.3 }
+        ], true);
+
+        const cur25 = entries.filter(e => e.month == fM && e.year == 2025);
+        const cur26 = entries.filter(e => e.month == fM && e.year == new Date().getFullYear());
+        const b25 = cur25.filter(x => x.status === 'Billed').length;
+        const b26 = cur26.filter(x => x.status === 'Billed').length;
+
+        let existingDoughnut = Chart.getChart('storeCompChart');
+        if (existingDoughnut) existingDoughnut.destroy();
+
+        new Chart(document.getElementById('storeCompChart'), {
+            type: 'doughnut',
+            data: { datasets: [
+                { label: '2026', data: [b26, cur26.length-b26], backgroundColor: ['#4f46e5', '#ff3131'], weight: 1.5 },
+                { label: '2025', data: [b25, cur25.length-b25], backgroundColor: ['#cbd5e1', '#e2e8f0'], weight: 1 }
+            ]},
+            options: { maintainAspectRatio: false, plugins: { datalabels: { display: true, formatter: (v, ctx) => {
+                const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                return total > 0 ? ((v / total) * 100).toFixed(0) + "%" : "";
+            }}}}
+        });
+
+        const a25 = new Array(12).fill(0), a26 = new Array(12).fill(0);
+        entries.forEach(e => { if(e.year == 2025) a25[e.month]++; if(e.year == new Date().getFullYear()) a26[e.month]++; });
+        createChart('annualBarChart', 'bar', ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"], [{label:'2025', data:a25, backgroundColor:'#cbd5e1'}, {label:'2026', data:a26, backgroundColor:'#4f46e5'}], false);
+    }
+
+    function createChart(id, type, labels, datasets, showLabels) {
+        let existingChart = Chart.getChart(id);
+        if (existingChart) existingChart.destroy();
+        new Chart(document.getElementById(id), { 
+            type, data: { labels, datasets }, 
+            options: { maintainAspectRatio:false, plugins:{ datalabels:{ display: showLabels, formatter: (v) => v > 0 ? v + '%' : '' } } } 
+        });
+    }
+
+    function createDoughnut(id, data) {
+        let existingChart = Chart.getChart(id);
+        if (existingChart) existingChart.destroy();
+        new Chart(document.getElementById(id), { 
+            type: 'doughnut', data: { datasets: [{ data, backgroundColor: ['#059669', '#ff3131'], cutout: '80%', borderWidth: 0 }] }, 
+            options: { maintainAspectRatio:false, plugins:{datalabels:{display:false}} } 
+        });
+    }
+
+    // WHATSAPP REPORTS
+    function sendWhatsAppReport() {
+        const selectedDate = document.getElementById('entryDate').value;
+        const targetDateObj = new Date(selectedDate);
+        const tMonth = targetDateObj.getMonth();
+        const tYear = targetDateObj.getFullYear();
+        const todayKeys = Object.keys(rawData).filter(k => rawData[k].date === selectedDate);
+        
+        if (todayKeys.length === 0) return alert("No entries found for today to send.");
+
+        const mtdEntries = entries.filter(e => e.month == tMonth && e.year == tYear && new Date(e.date) <= targetDateObj);
+        const salesStats = {};
+
+        mtdEntries.forEach(e => {
+            const name = normalize(e.salesman);
+            if (!salesStats[name]) salesStats[name] = { today: { billed: 0, missed: 0, total: 0 }, mtd: { billed: 0, missed: 0, total: 0 } };
+            salesStats[name].mtd.total++;
+            if (e.status === 'Billed') salesStats[name].mtd.billed++;
+            else salesStats[name].mtd.missed++;
+
+            if (e.date === selectedDate) {
+                salesStats[name].today.total++;
+                if (e.status === 'Billed') salesStats[name].today.billed++;
+                else salesStats[name].today.missed++;
+            }
+        });
+
+        let topPerformer = { name: "None", conv: -1, billed: 0 };
+        Object.keys(salesStats).forEach(name => {
+            const s = salesStats[name];
+            if (s.mtd.total > 0) {
+                const conv = (s.mtd.billed / s.mtd.total) * 100;
+                if (conv > topPerformer.conv || (conv === topPerformer.conv && s.mtd.billed > topPerformer.billed)) {
+                    topPerformer = { name, conv, billed: s.mtd.billed, total: s.mtd.total };
+                }
+            }
+        });
+
+        let msg = `*URBAN CASA*\n*Daily Sales Conversion Report*\n*Date:* ${selectedDate}\n\n*-- SALESMAN PERFORMANCE --*\n\n`;
+        Object.keys(salesStats).forEach(name => {
+            const s = salesStats[name];
+            if (s.mtd.total > 0) {
+                const tConvRate = s.today.total > 0 ? ((s.today.billed / s.today.total) * 100).toFixed(0) : 0;
+                const mtdConvRate = s.mtd.total > 0 ? ((s.mtd.billed / s.mtd.total) * 100).toFixed(0) : 0;
+                msg += `*${name.toUpperCase()}*\n> Today: ${s.today.billed} Billed / ${s.today.total} Walk-ins (${tConvRate}%)\n> MTD: ${s.mtd.billed} Billed / ${s.mtd.total} Walk-ins (${mtdConvRate}%)\n\n`;
+            }
+        });
+
+        if (topPerformer.conv >= 0) msg += `*-- MONTHLY TOP PERFORMER --*\n* ${topPerformer.name.toUpperCase()} (${topPerformer.conv.toFixed(0)}% Conversion)\n`;
+
+        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    }
+
+    function sendAdminWhatsAppReport() {
+        const fM = parseInt(document.getElementById('filterMonth').value);
+        const fY = parseInt(document.getElementById('filterYear').value);
+        const ms = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        
+        const monthEntries = entries.filter(e => parseInt(e.month) === fM && parseInt(e.year) === fY);
+        if (monthEntries.length === 0) return alert(`No entries found for ${ms[fM]} ${fY} to send to MD.`);
+
+        let mBilled = 0, mMissed = 0; const salesStats = {};
+        monthEntries.forEach(e => {
+            if(e.status === 'Billed') mBilled++; else mMissed++;
+            const name = normalize(e.salesman);
+            if(!salesStats[name]) salesStats[name] = { billed: 0, total: 0 };
+            salesStats[name].total++;
+            if(e.status === 'Billed') salesStats[name].billed++;
+        });
+
+        const mConv = monthEntries.length > 0 ? ((mBilled / monthEntries.length) * 100).toFixed(1) : 0;
+        let msg = `*URBAN CASA - EXECUTIVE REPORT*\n*Month:* ${ms[fM]} ${fY}\n\n*-- STORE METRICS (TOTAL MONTH) --*\n> Total Walk-ins: ${monthEntries.length}\n> Total Billed: ${mBilled}\n> Total Missed: ${mMissed}\n> Conv Rate: ${mConv}%\n\n*-- SALESMAN BREAKDOWN --*\n`;
+        
+        Object.keys(salesStats).map(name => ({ name, ...salesStats[name], conv: (salesStats[name].billed / salesStats[name].total) * 100 }))
+            .sort((a, b) => b.conv - a.conv)
+            .forEach(s => msg += `* ${s.name}: ${s.billed}/${s.total} Billed (${s.conv.toFixed(0)}%)\n`);
+
+        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    }
+</script>
+</body>
+</html>
